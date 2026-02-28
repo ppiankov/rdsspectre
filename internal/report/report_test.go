@@ -209,7 +209,7 @@ func TestSpectreHubNoFindings(t *testing.T) {
 	if err := r.Generate(data); err != nil {
 		t.Fatalf("Generate() error: %v", err)
 	}
-	if !strings.Contains(buf.String(), "spectrehub/v1") {
+	if !strings.Contains(buf.String(), "spectre/v1") {
 		t.Error("missing schema")
 	}
 }
@@ -224,7 +224,7 @@ func TestSpectreHubReporter(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	if parsed["schema"] != "spectrehub/v1" {
-		t.Errorf("schema = %v, want spectrehub/v1", parsed["schema"])
+	if parsed["schema"] != "spectre/v1" {
+		t.Errorf("schema = %v, want spectre/v1", parsed["schema"])
 	}
 }
