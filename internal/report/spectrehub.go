@@ -14,7 +14,7 @@ type SpectreHubReporter struct {
 // Generate writes the SpectreHub report.
 func (r *SpectreHubReporter) Generate(data Data) error {
 	envelope := map[string]any{
-		"schema":    "spectrehub/v1",
+		"schema":    "spectre/v1",
 		"tool":      data.Tool,
 		"version":   data.Version,
 		"timestamp": data.Timestamp,
