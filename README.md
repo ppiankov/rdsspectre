@@ -1,6 +1,7 @@
 # rdsspectre
 
 [![CI](https://github.com/ppiankov/rdsspectre/actions/workflows/ci.yml/badge.svg)](https://github.com/ppiankov/rdsspectre/actions/workflows/ci.yml)
+[![ANCC](https://img.shields.io/badge/ANCC-compliant-brightgreen)](https://ancc.dev)
 [![Go Report Card](https://goreportcard.com/badge/github.com/ppiankov/rdsspectre)](https://goreportcard.com/report/github.com/ppiankov/rdsspectre)
 
 **rdsspectre** — Managed database waste and security auditor for RDS and Cloud SQL. Part of [SpectreHub](https://github.com/ppiankov/spectrehub).
