@@ -10,7 +10,7 @@ import (
 )
 
 // severityRank orders findings critical-first when rendering text output.
-// WO-10: unranked severities (should not occur) sort last, after low.
+// Unranked severities (should not occur) sort last, after low.
 var severityRank = map[database.Severity]int{
 	database.SeverityCritical: 0,
 	database.SeverityHigh:     1,

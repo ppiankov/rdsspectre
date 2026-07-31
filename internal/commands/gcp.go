@@ -45,7 +45,7 @@ func init() {
 
 func runGCP(cmd *cobra.Command, _ []string) error {
 	// Load config and apply defaults before building the timeout context, so
-	// a config-file timeout can fall back into effect (WO-7).
+	// a config-file timeout can fall back into effect.
 	cfg, err := config.Load(".")
 	if err != nil {
 		slog.Warn("Failed to load config file", "error", err)
@@ -136,7 +136,7 @@ func runGCP(cmd *cobra.Command, _ []string) error {
 }
 
 // applyGCPConfigDefaults fills unset flags from the config file.
-// WO-8: mirrors applyAWSConfigDefaults's cmd.Flags().Changed() precedence fix.
+// Mirrors applyAWSConfigDefaults's cmd.Flags().Changed() precedence fix.
 func applyGCPConfigDefaults(cmd *cobra.Command, cfg config.Config) {
 	flags := cmd.Flags()
 	if !flags.Changed("format") && cfg.Format != "" {

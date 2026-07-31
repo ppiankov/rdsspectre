@@ -3,6 +3,7 @@ package rds
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -53,7 +54,9 @@ func (s *RDSScanner) Scan(ctx context.Context, cfg database.ScanConfig, progress
 		}
 		if len(cfg.Exclude.Tags) > 0 {
 			tags, err := FetchTags(ctx, s.client, inst.ARN)
-			if err == nil && cfg.Exclude.MatchesExcludedTags(tags) {
+			if err != nil {
+				slog.Warn("Failed to fetch tags for tag-based exclusion", "instance", inst.ID, "error", err)
+			} else if cfg.Exclude.MatchesExcludedTags(tags) {
 				continue
 			}
 		}

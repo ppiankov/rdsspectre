@@ -181,7 +181,7 @@ func TestScanReadReplica(t *testing.T) {
 	if len(hits) != 1 {
 		t.Errorf("expected 1 UNUSED_READ_REPLICA finding, got %d", len(hits))
 	}
-	// WO-11: usage is unconfirmed without Cloud Monitoring data, so this must
+	// Usage is unconfirmed without Cloud Monitoring data, so this must
 	// not report High severity or claim a definite EstimatedMonthlyWaste.
 	if hits[0].Severity != database.SeverityLow {
 		t.Errorf("replica finding severity = %q, want %q (unconfirmed usage)", hits[0].Severity, database.SeverityLow)

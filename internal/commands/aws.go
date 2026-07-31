@@ -58,7 +58,7 @@ func init() {
 
 func runAWS(cmd *cobra.Command, _ []string) error {
 	// Load config and apply defaults before building the timeout context, so
-	// a config-file timeout can fall back into effect (WO-7).
+	// a config-file timeout can fall back into effect.
 	cfg, err := config.Load(".")
 	if err != nil {
 		slog.Warn("Failed to load config file", "error", err)
@@ -162,7 +162,7 @@ func runAWS(cmd *cobra.Command, _ []string) error {
 }
 
 // applyAWSConfigDefaults fills unset flags from the config file.
-// WO-8: an explicit CLI flag always wins over config, even when its value
+// An explicit CLI flag always wins over config, even when its value
 // equals the flag's built-in default; only cmd.Flags().Changed() can tell
 // "explicitly set to the default" apart from "never set".
 func applyAWSConfigDefaults(cmd *cobra.Command, cfg config.Config) {

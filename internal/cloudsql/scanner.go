@@ -142,7 +142,7 @@ func (s *CloudSQLScanner) analyzeInstance(cfg database.ScanConfig, inst Instance
 	}
 
 	// UNUSED_READ_REPLICA: config-based detection only, no connection signal
-	// available (Cloud Monitoring deferred). WO-11: unlike the AWS path
+	// available (Cloud Monitoring deferred). Unlike the AWS path
 	// (rds/scanner.go), which only fires on a confirmed zero-connection
 	// window, usage here is genuinely unknown, so this reports Low severity
 	// with no claimed EstimatedMonthlyWaste rather than presenting the full

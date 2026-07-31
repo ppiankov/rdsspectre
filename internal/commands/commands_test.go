@@ -334,7 +334,7 @@ func TestApplyGCPConfigDefaults(t *testing.T) {
 }
 
 func TestApplyAWSConfigDefaultsExplicitFlagWinsOverConfig(t *testing.T) {
-	// WO-8: an explicit --idle-days=14 (equal to the built-in default) must
+	// An explicit --idle-days=14 (equal to the built-in default) must
 	// win over a conflicting config file value, unlike the old sentinel check.
 	awsFlags.idleDays = 14
 	if err := awsCmd.Flags().Set("idle-days", "14"); err != nil {
