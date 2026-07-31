@@ -180,7 +180,8 @@ func TestSelectReporter(t *testing.T) {
 		{"invalid", true},
 	}
 	for _, tt := range tests {
-		r, err := selectReporter(tt.format, "")
+		// WO-12: selectReporter now returns an io.Closer alongside the reporter.
+		r, _, err := selectReporter(tt.format, "")
 		if tt.wantErr {
 			if err == nil {
 				t.Errorf("selectReporter(%q) should error", tt.format)
@@ -275,19 +276,27 @@ func TestApplyAWSConfigDefaults(t *testing.T) {
 	awsFlags.minMonthlyCost = 0.10
 }
 
+// WO-12: exercises the io.Closer returned for file-backed reporters.
 func TestSelectReporterOutputFile(t *testing.T) {
 	f := filepath.Join(t.TempDir(), "out.json")
-	r, err := selectReporter("json", f)
+	r, closer, err := selectReporter("json", f)
 	if err != nil {
 		t.Fatalf("selectReporter() error: %v", err)
 	}
 	if r == nil {
 		t.Fatal("selectReporter() returned nil")
 	}
+	if closer == nil {
+		t.Fatal("selectReporter() should return a non-nil closer for a file output")
+	}
+	if err := closer.Close(); err != nil {
+		t.Errorf("closer.Close() error: %v", err)
+	}
 }
 
 func TestSelectReporterBadPath(t *testing.T) {
-	_, err := selectReporter("json", "/nonexistent/dir/file.json")
+	// WO-12: selectReporter now returns an io.Closer alongside the reporter.
+	_, _, err := selectReporter("json", "/nonexistent/dir/file.json")
 	if err == nil {
 		t.Error("expected error for bad output path")
 	}

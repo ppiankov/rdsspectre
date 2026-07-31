@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -156,9 +157,19 @@ func runAWS(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Select and run reporter
-	reporter, err := selectReporter(awsFlags.format, awsFlags.outputFile)
+	// WO-12: close the output file after Generate so temp-dir cleanup
+	// (and any later read of the file) doesn't race an open handle,
+	// which is fatal on Windows.
+	reporter, closer, err := selectReporter(awsFlags.format, awsFlags.outputFile)
 	if err != nil {
 		return err
+	}
+	if closer != nil {
+		defer func() {
+			if cerr := closer.Close(); cerr != nil {
+				slog.Warn("Failed to close output file", "error", cerr)
+			}
+		}()
 	}
 	return reporter.Generate(data)
 }
@@ -201,27 +212,31 @@ func applyAWSConfigDefaults(cmd *cobra.Command, cfg config.Config) {
 	}
 }
 
-func selectReporter(format, outputFile string) (report.Reporter, error) {
-	w := os.Stdout
+// WO-12: also returns an io.Closer (nil for stdout) so callers can close the
+// output file after Generate instead of leaking the handle until process exit.
+func selectReporter(format, outputFile string) (report.Reporter, io.Closer, error) {
+	var w io.Writer = os.Stdout
+	var closer io.Closer
 	if outputFile != "" {
 		f, err := os.Create(outputFile)
 		if err != nil {
-			return nil, fmt.Errorf("create output file: %w", err)
+			return nil, nil, fmt.Errorf("create output file: %w", err)
 		}
 		w = f
+		closer = f
 	}
 
 	switch format {
 	case "json":
-		return &report.JSONReporter{Writer: w}, nil
+		return &report.JSONReporter{Writer: w}, closer, nil
 	case "text":
-		return &report.TextReporter{Writer: w}, nil
+		return &report.TextReporter{Writer: w}, closer, nil
 	case "sarif":
-		return &report.SARIFReporter{Writer: w}, nil
+		return &report.SARIFReporter{Writer: w}, closer, nil
 	case "spectrehub":
-		return &report.SpectreHubReporter{Writer: w}, nil
+		return &report.SpectreHubReporter{Writer: w}, closer, nil
 	default:
-		return nil, fmt.Errorf("unsupported format: %s (use text, json, sarif, or spectrehub)", format)
+		return nil, closer, fmt.Errorf("unsupported format: %s (use text, json, sarif, or spectrehub)", format)
 	}
 }
 

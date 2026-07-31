@@ -130,9 +130,18 @@ func runGCP(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Select and run reporter
-	reporter, err := selectReporter(gcpFlags.format, gcpFlags.outputFile)
+	// WO-12: close the output file after Generate; open handles are fatal
+	// to temp-dir cleanup on Windows.
+	reporter, closer, err := selectReporter(gcpFlags.format, gcpFlags.outputFile)
 	if err != nil {
 		return err
+	}
+	if closer != nil {
+		defer func() {
+			if cerr := closer.Close(); cerr != nil {
+				slog.Warn("Failed to close output file", "error", cerr)
+			}
+		}()
 	}
 	return reporter.Generate(data)
 }
