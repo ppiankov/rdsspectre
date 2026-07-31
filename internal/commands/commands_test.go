@@ -209,6 +209,23 @@ func TestParseExcludeTags(t *testing.T) {
 	}
 }
 
+func TestBuildExcludeIDs(t *testing.T) {
+	m := buildExcludeIDs([]string{"mydb-prod", "mydb-staging"})
+	if !m["mydb-prod"] || !m["mydb-staging"] {
+		t.Errorf("expected both IDs present, got %+v", m)
+	}
+	if len(m) != 2 {
+		t.Errorf("len = %d, want 2", len(m))
+	}
+}
+
+func TestBuildExcludeIDsEmpty(t *testing.T) {
+	m := buildExcludeIDs(nil)
+	if len(m) != 0 {
+		t.Errorf("expected empty map, got %+v", m)
+	}
+}
+
 func TestParseExcludeTagsEmpty(t *testing.T) {
 	tags := parseExcludeTags(nil, nil)
 	if tags != nil {

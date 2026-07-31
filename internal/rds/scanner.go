@@ -48,7 +48,7 @@ func (s *RDSScanner) Scan(ctx context.Context, cfg database.ScanConfig, progress
 		if inst.Status != "available" {
 			continue
 		}
-		if cfg.Exclude.ResourceIDs[inst.ID] {
+		if cfg.Exclude.IsExcluded(inst.ID) {
 			continue
 		}
 		result.ResourcesScanned++
@@ -64,7 +64,7 @@ func (s *RDSScanner) Scan(ctx context.Context, cfg database.ScanConfig, progress
 	} else {
 		s.reportProgress(progress, fmt.Sprintf("Found %d manual snapshots", len(snapshots)))
 		for _, snap := range snapshots {
-			if cfg.Exclude.ResourceIDs[snap.ID] {
+			if cfg.Exclude.IsExcluded(snap.ID) {
 				continue
 			}
 			result.ResourcesScanned++
@@ -277,12 +277,5 @@ func (s *RDSScanner) analyzeSnapshot(cfg database.ScanConfig, snap Snapshot) []d
 }
 
 func (s *RDSScanner) reportProgress(progress func(database.ScanProgress), msg string) {
-	if progress != nil {
-		progress(database.ScanProgress{
-			Region:    s.region,
-			Scanner:   "rds",
-			Message:   msg,
-			Timestamp: time.Now(),
-		})
-	}
+	database.ReportProgress(progress, "rds", s.region, msg)
 }

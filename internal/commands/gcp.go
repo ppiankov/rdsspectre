@@ -76,10 +76,7 @@ func runGCP(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Build scan config
-	excludeIDs := make(map[string]bool, len(cfg.Exclude.ResourceIDs))
-	for _, id := range cfg.Exclude.ResourceIDs {
-		excludeIDs[id] = true
-	}
+	excludeIDs := buildExcludeIDs(cfg.Exclude.ResourceIDs)
 	excludeTags := parseExcludeTags(cfg.Exclude.Tags, gcpFlags.excludeTags)
 
 	scanCfg := database.ScanConfig{

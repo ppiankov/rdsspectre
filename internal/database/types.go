@@ -76,10 +76,28 @@ type ExcludeConfig struct {
 	Tags        map[string]string `json:"tags,omitempty"`
 }
 
+// IsExcluded reports whether id is in the resource-ID exclusion list.
+func (e ExcludeConfig) IsExcluded(id string) bool {
+	return e.ResourceIDs[id]
+}
+
 // ScanProgress reports scanning progress.
 type ScanProgress struct {
 	Region    string    `json:"region"`
 	Scanner   string    `json:"scanner"`
 	Message   string    `json:"message"`
 	Timestamp time.Time `json:"timestamp"`
+}
+
+// ReportProgress invokes progress with a ScanProgress if progress is non-nil.
+// Shared by per-provider scanners to avoid re-implementing the same guard.
+func ReportProgress(progress func(ScanProgress), scanner, region, msg string) {
+	if progress != nil {
+		progress(ScanProgress{
+			Region:    region,
+			Scanner:   scanner,
+			Message:   msg,
+			Timestamp: time.Now(),
+		})
+	}
 }

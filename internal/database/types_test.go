@@ -2,6 +2,36 @@ package database
 
 import "testing"
 
+func TestExcludeConfigIsExcluded(t *testing.T) {
+	e := ExcludeConfig{ResourceIDs: map[string]bool{"mydb-prod": true}}
+	if !e.IsExcluded("mydb-prod") {
+		t.Error("expected mydb-prod to be excluded")
+	}
+	if e.IsExcluded("mydb-dev") {
+		t.Error("expected mydb-dev to not be excluded")
+	}
+}
+
+func TestExcludeConfigIsExcludedNilMap(t *testing.T) {
+	var e ExcludeConfig
+	if e.IsExcluded("anything") {
+		t.Error("nil ResourceIDs should exclude nothing")
+	}
+}
+
+func TestReportProgressNilCallback(t *testing.T) {
+	// Must not panic when progress is nil.
+	ReportProgress(nil, "rds", "us-east-1", "scanning")
+}
+
+func TestReportProgressInvokesCallback(t *testing.T) {
+	var got ScanProgress
+	ReportProgress(func(p ScanProgress) { got = p }, "cloudsql", "my-project", "listing instances")
+	if got.Scanner != "cloudsql" || got.Region != "my-project" || got.Message != "listing instances" {
+		t.Errorf("unexpected progress: %+v", got)
+	}
+}
+
 func TestSeverityConstants(t *testing.T) {
 	if SeverityCritical != "critical" {
 		t.Error("SeverityCritical mismatch")

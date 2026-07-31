@@ -94,10 +94,7 @@ func runAWS(cmd *cobra.Command, _ []string) error {
 	slog.Info("Scanning RDS", "region", resolvedRegion)
 
 	// Build scan config
-	excludeIDs := make(map[string]bool, len(cfg.Exclude.ResourceIDs))
-	for _, id := range cfg.Exclude.ResourceIDs {
-		excludeIDs[id] = true
-	}
+	excludeIDs := buildExcludeIDs(cfg.Exclude.ResourceIDs)
 	excludeTags := parseExcludeTags(cfg.Exclude.Tags, awsFlags.excludeTags)
 
 	scanCfg := database.ScanConfig{

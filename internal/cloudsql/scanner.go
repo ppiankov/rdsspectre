@@ -46,7 +46,7 @@ func (s *CloudSQLScanner) Scan(ctx context.Context, cfg database.ScanConfig, pro
 		if inst.State != "RUNNABLE" {
 			continue
 		}
-		if cfg.Exclude.ResourceIDs[inst.Name] {
+		if cfg.Exclude.IsExcluded(inst.Name) {
 			continue
 		}
 		result.ResourcesScanned++
@@ -175,12 +175,5 @@ func hasPublicAccess(inst Instance) bool {
 }
 
 func (s *CloudSQLScanner) reportProgress(progress func(database.ScanProgress), msg string) {
-	if progress != nil {
-		progress(database.ScanProgress{
-			Region:    s.project,
-			Scanner:   "cloudsql",
-			Message:   msg,
-			Timestamp: time.Now(),
-		})
-	}
+	database.ReportProgress(progress, "cloudsql", s.project, msg)
 }
