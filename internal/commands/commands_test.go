@@ -233,7 +233,7 @@ func TestApplyAWSConfigDefaults(t *testing.T) {
 		MinMonthlyCost: 1.0,
 	}
 
-	applyAWSConfigDefaults(cfg)
+	applyAWSConfigDefaults(awsCmd, cfg)
 
 	if awsFlags.format != "json" {
 		t.Errorf("format = %q, want json", awsFlags.format)
@@ -284,7 +284,7 @@ func TestApplyAWSConfigDefaultsNoOverride(t *testing.T) {
 	awsFlags.format = "text"
 	awsFlags.idleDays = 14
 	cfg := config.Config{} // all zero
-	applyAWSConfigDefaults(cfg)
+	applyAWSConfigDefaults(awsCmd, cfg)
 	if awsFlags.format != "text" {
 		t.Errorf("format should remain text, got %q", awsFlags.format)
 	}
@@ -301,7 +301,7 @@ func TestApplyGCPConfigDefaults(t *testing.T) {
 		Format:         "json",
 		MinMonthlyCost: 5.0,
 	}
-	applyGCPConfigDefaults(cfg)
+	applyGCPConfigDefaults(gcpCmd, cfg)
 
 	if gcpFlags.format != "json" {
 		t.Errorf("format = %q, want json", gcpFlags.format)
@@ -315,12 +315,50 @@ func TestApplyGCPConfigDefaults(t *testing.T) {
 	gcpFlags.minMonthlyCost = 0.10
 }
 
+func TestApplyAWSConfigDefaultsExplicitFlagWinsOverConfig(t *testing.T) {
+	// WO-8: an explicit --idle-days=14 (equal to the built-in default) must
+	// win over a conflicting config file value, unlike the old sentinel check.
+	awsFlags.idleDays = 14
+	if err := awsCmd.Flags().Set("idle-days", "14"); err != nil {
+		t.Fatalf("Set() error: %v", err)
+	}
+	defer func() {
+		awsCmd.Flags().Lookup("idle-days").Changed = false
+		awsFlags.idleDays = 14
+	}()
+
+	cfg := config.Config{IdleDays: 30}
+	applyAWSConfigDefaults(awsCmd, cfg)
+
+	if awsFlags.idleDays != 14 {
+		t.Errorf("idleDays = %d, want 14 (explicit flag should win over config)", awsFlags.idleDays)
+	}
+}
+
+func TestApplyGCPConfigDefaultsExplicitFlagWinsOverConfig(t *testing.T) {
+	gcpFlags.minMonthlyCost = 0.10
+	if err := gcpCmd.Flags().Set("min-monthly-cost", "0.10"); err != nil {
+		t.Fatalf("Set() error: %v", err)
+	}
+	defer func() {
+		gcpCmd.Flags().Lookup("min-monthly-cost").Changed = false
+		gcpFlags.minMonthlyCost = 0.10
+	}()
+
+	cfg := config.Config{MinMonthlyCost: 5.0}
+	applyGCPConfigDefaults(gcpCmd, cfg)
+
+	if gcpFlags.minMonthlyCost != 0.10 {
+		t.Errorf("minMonthlyCost = %f, want 0.10 (explicit flag should win over config)", gcpFlags.minMonthlyCost)
+	}
+}
+
 func TestApplyGCPConfigDefaultsNoOverride(t *testing.T) {
 	gcpFlags.format = "text"
 	gcpFlags.minMonthlyCost = 0.10
 
 	cfg := config.Config{} // all zero
-	applyGCPConfigDefaults(cfg)
+	applyGCPConfigDefaults(gcpCmd, cfg)
 
 	if gcpFlags.format != "text" {
 		t.Errorf("format should remain text, got %q", gcpFlags.format)

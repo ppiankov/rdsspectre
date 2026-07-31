@@ -56,7 +56,7 @@ func runGCP(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		slog.Warn("Failed to load config file", "error", err)
 	}
-	applyGCPConfigDefaults(cfg)
+	applyGCPConfigDefaults(cmd, cfg)
 
 	// Resolve project
 	project := gcpFlags.project
@@ -134,11 +134,14 @@ func runGCP(cmd *cobra.Command, _ []string) error {
 	return reporter.Generate(data)
 }
 
-func applyGCPConfigDefaults(cfg config.Config) {
-	if gcpFlags.format == "text" && cfg.Format != "" {
+// applyGCPConfigDefaults fills unset flags from the config file.
+// WO-8: mirrors applyAWSConfigDefaults's cmd.Flags().Changed() precedence fix.
+func applyGCPConfigDefaults(cmd *cobra.Command, cfg config.Config) {
+	flags := cmd.Flags()
+	if !flags.Changed("format") && cfg.Format != "" {
 		gcpFlags.format = cfg.Format
 	}
-	if gcpFlags.minMonthlyCost == 0.10 && cfg.MinMonthlyCost > 0 {
+	if !flags.Changed("min-monthly-cost") && cfg.MinMonthlyCost > 0 {
 		gcpFlags.minMonthlyCost = cfg.MinMonthlyCost
 	}
 }

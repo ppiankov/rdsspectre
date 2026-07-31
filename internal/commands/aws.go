@@ -69,7 +69,7 @@ func runAWS(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		slog.Warn("Failed to load config file", "error", err)
 	}
-	applyAWSConfigDefaults(cfg)
+	applyAWSConfigDefaults(cmd, cfg)
 
 	// Resolve profile and region
 	profile := awsFlags.profile
@@ -160,23 +160,28 @@ func runAWS(cmd *cobra.Command, _ []string) error {
 	return reporter.Generate(data)
 }
 
-func applyAWSConfigDefaults(cfg config.Config) {
-	if awsFlags.format == "text" && cfg.Format != "" {
+// applyAWSConfigDefaults fills unset flags from the config file.
+// WO-8: an explicit CLI flag always wins over config, even when its value
+// equals the flag's built-in default; only cmd.Flags().Changed() can tell
+// "explicitly set to the default" apart from "never set".
+func applyAWSConfigDefaults(cmd *cobra.Command, cfg config.Config) {
+	flags := cmd.Flags()
+	if !flags.Changed("format") && cfg.Format != "" {
 		awsFlags.format = cfg.Format
 	}
-	if awsFlags.idleDays == 14 && cfg.IdleDays > 0 {
+	if !flags.Changed("idle-days") && cfg.IdleDays > 0 {
 		awsFlags.idleDays = cfg.IdleDays
 	}
-	if awsFlags.staleDays == 90 && cfg.StaleDays > 0 {
+	if !flags.Changed("stale-days") && cfg.StaleDays > 0 {
 		awsFlags.staleDays = cfg.StaleDays
 	}
-	if awsFlags.cpuThreshold == 20.0 && cfg.CPUThreshold > 0 {
+	if !flags.Changed("cpu-threshold") && cfg.CPUThreshold > 0 {
 		awsFlags.cpuThreshold = cfg.CPUThreshold
 	}
-	if awsFlags.metricDays == 14 && cfg.MetricDays > 0 {
+	if !flags.Changed("metric-days") && cfg.MetricDays > 0 {
 		awsFlags.metricDays = cfg.MetricDays
 	}
-	if awsFlags.minMonthlyCost == 0.10 && cfg.MinMonthlyCost > 0 {
+	if !flags.Changed("min-monthly-cost") && cfg.MinMonthlyCost > 0 {
 		awsFlags.minMonthlyCost = cfg.MinMonthlyCost
 	}
 }
