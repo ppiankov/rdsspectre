@@ -394,6 +394,57 @@ func TestScanExcludeInstance(t *testing.T) {
 	}
 }
 
+func TestScanExcludeByTag(t *testing.T) {
+	mock := newMockRDSClient()
+	mock.instances = []rdstypes.DBInstance{
+		makeInstance("tagged-db", "db.t3.small", "postgres", "17.2", func(i *rdstypes.DBInstance) {
+			i.DBInstanceArn = aws.String("arn:aws:rds:us-east-1:123456789012:db:tagged-db")
+			i.StorageEncrypted = aws.Bool(false) // would normally be flagged
+		}),
+	}
+	mock.tagsForARN["arn:aws:rds:us-east-1:123456789012:db:tagged-db"] = []rdstypes.Tag{
+		{Key: aws.String("env"), Value: aws.String("temporary")},
+	}
+	cw := newMockCWClient()
+
+	cfg := defaultCfg()
+	cfg.Exclude.Tags = map[string]string{"env": "temporary"}
+
+	s := newTestScanner(mock, cw)
+	result := s.Scan(context.Background(), cfg, nil)
+
+	if len(result.Findings) != 0 {
+		t.Errorf("expected 0 findings for tag-excluded instance, got %d", len(result.Findings))
+	}
+	if result.ResourcesScanned != 0 {
+		t.Errorf("ResourcesScanned = %d, want 0 (tag-excluded)", result.ResourcesScanned)
+	}
+}
+
+func TestScanTagExcludeNoMatch(t *testing.T) {
+	mock := newMockRDSClient()
+	mock.instances = []rdstypes.DBInstance{
+		makeInstance("keep-db", "db.t3.small", "postgres", "17.2", func(i *rdstypes.DBInstance) {
+			i.DBInstanceArn = aws.String("arn:aws:rds:us-east-1:123456789012:db:keep-db")
+			i.StorageEncrypted = aws.Bool(false)
+		}),
+	}
+	mock.tagsForARN["arn:aws:rds:us-east-1:123456789012:db:keep-db"] = []rdstypes.Tag{
+		{Key: aws.String("env"), Value: aws.String("production")},
+	}
+	cw := newMockCWClient()
+
+	cfg := defaultCfg()
+	cfg.Exclude.Tags = map[string]string{"env": "temporary"}
+
+	s := newTestScanner(mock, cw)
+	result := s.Scan(context.Background(), cfg, nil)
+
+	if len(findByID(result.Findings, database.FindingUnencryptedStorage)) != 1 {
+		t.Error("expected instance to still be flagged (tag does not match exclusion)")
+	}
+}
+
 func TestScanSkipsNonAvailableInstances(t *testing.T) {
 	mock := newMockRDSClient()
 	mock.instances = []rdstypes.DBInstance{

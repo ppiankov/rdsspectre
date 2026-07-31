@@ -81,6 +81,18 @@ func (e ExcludeConfig) IsExcluded(id string) bool {
 	return e.ResourceIDs[id]
 }
 
+// MatchesExcludedTags reports whether tags matches any configured exclusion
+// rule. A configured value of "" matches any value for that key (key-only
+// exclusion, mirroring commands.parseExcludeTags's key-only tag syntax).
+func (e ExcludeConfig) MatchesExcludedTags(tags map[string]string) bool {
+	for k, want := range e.Tags {
+		if got, ok := tags[k]; ok && (want == "" || got == want) {
+			return true
+		}
+	}
+	return false
+}
+
 // ScanProgress reports scanning progress.
 type ScanProgress struct {
 	Region    string    `json:"region"`

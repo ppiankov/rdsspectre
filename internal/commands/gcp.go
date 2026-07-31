@@ -44,19 +44,23 @@ func init() {
 }
 
 func runGCP(cmd *cobra.Command, _ []string) error {
+	// Load config and apply defaults before building the timeout context, so
+	// a config-file timeout can fall back into effect (WO-7).
+	cfg, err := config.Load(".")
+	if err != nil {
+		slog.Warn("Failed to load config file", "error", err)
+	}
+	if cfg.Provider != "" && cfg.Provider != "gcp" {
+		return fmt.Errorf("config provider %q does not match the invoked \"gcp\" subcommand", cfg.Provider)
+	}
+	applyGCPConfigDefaults(cmd, cfg)
+
 	ctx := cmd.Context()
 	if gcpFlags.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, gcpFlags.timeout)
 		defer cancel()
 	}
-
-	// Load config and apply defaults
-	cfg, err := config.Load(".")
-	if err != nil {
-		slog.Warn("Failed to load config file", "error", err)
-	}
-	applyGCPConfigDefaults(cmd, cfg)
 
 	// Resolve project
 	project := gcpFlags.project
@@ -140,5 +144,8 @@ func applyGCPConfigDefaults(cmd *cobra.Command, cfg config.Config) {
 	}
 	if !flags.Changed("min-monthly-cost") && cfg.MinMonthlyCost > 0 {
 		gcpFlags.minMonthlyCost = cfg.MinMonthlyCost
+	}
+	if !flags.Changed("timeout") && cfg.TimeoutDuration() > 0 {
+		gcpFlags.timeout = cfg.TimeoutDuration()
 	}
 }

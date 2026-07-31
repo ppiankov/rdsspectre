@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ppiankov/rdsspectre/internal/config"
 )
@@ -370,6 +371,16 @@ func TestApplyGCPConfigDefaultsExplicitFlagWinsOverConfig(t *testing.T) {
 	}
 }
 
+func TestApplyGCPConfigDefaultsTimeoutFallback(t *testing.T) {
+	gcpFlags.timeout = 10 * time.Minute
+	cfg := config.Config{Timeout: "5m"}
+	applyGCPConfigDefaults(gcpCmd, cfg)
+	if gcpFlags.timeout != 5*time.Minute {
+		t.Errorf("timeout = %v, want 5m (config fallback)", gcpFlags.timeout)
+	}
+	gcpFlags.timeout = 10 * time.Minute
+}
+
 func TestApplyGCPConfigDefaultsNoOverride(t *testing.T) {
 	gcpFlags.format = "text"
 	gcpFlags.minMonthlyCost = 0.10
@@ -382,6 +393,64 @@ func TestApplyGCPConfigDefaultsNoOverride(t *testing.T) {
 	}
 	if gcpFlags.minMonthlyCost != 0.10 {
 		t.Errorf("minMonthlyCost should remain 0.10, got %f", gcpFlags.minMonthlyCost)
+	}
+}
+
+func TestRunGCPProviderMismatch(t *testing.T) {
+	dir := t.TempDir()
+	cfgContent := "provider: aws\nproject: test-project\n"
+	if err := os.WriteFile(filepath.Join(dir, ".rdsspectre.yaml"), []byte(cfgContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	chdir(t, dir)
+
+	gcpFlags.project = ""
+	rootCmd.SetArgs([]string{"gcp"})
+	err := rootCmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Errorf("expected provider-mismatch error, got %v", err)
+	}
+}
+
+func TestRunAWSProviderMismatch(t *testing.T) {
+	dir := t.TempDir()
+	cfgContent := "provider: gcp\n"
+	if err := os.WriteFile(filepath.Join(dir, ".rdsspectre.yaml"), []byte(cfgContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	chdir(t, dir)
+
+	rootCmd.SetArgs([]string{"aws"})
+	err := rootCmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Errorf("expected provider-mismatch error, got %v", err)
+	}
+}
+
+func TestApplyAWSConfigDefaultsTimeoutFallback(t *testing.T) {
+	awsFlags.timeout = 10 * time.Minute
+	cfg := config.Config{Timeout: "5m"}
+	applyAWSConfigDefaults(awsCmd, cfg)
+	if awsFlags.timeout != 5*time.Minute {
+		t.Errorf("timeout = %v, want 5m (config fallback)", awsFlags.timeout)
+	}
+	awsFlags.timeout = 10 * time.Minute
+}
+
+func TestApplyAWSConfigDefaultsTimeoutExplicitWins(t *testing.T) {
+	awsFlags.timeout = 10 * time.Minute
+	if err := awsCmd.Flags().Set("timeout", "10m"); err != nil {
+		t.Fatalf("Set() error: %v", err)
+	}
+	defer func() {
+		awsCmd.Flags().Lookup("timeout").Changed = false
+		awsFlags.timeout = 10 * time.Minute
+	}()
+
+	cfg := config.Config{Timeout: "5m"}
+	applyAWSConfigDefaults(awsCmd, cfg)
+	if awsFlags.timeout != 10*time.Minute {
+		t.Errorf("timeout = %v, want 10m (explicit flag should win over config)", awsFlags.timeout)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	cwtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
+	awsrds "github.com/aws/aws-sdk-go-v2/service/rds"
 )
 
 // MetricStats holds summarized CloudWatch metric data.
@@ -16,6 +17,25 @@ type MetricStats struct {
 	TotalConns     float64
 	HasData        bool
 	DatapointCount int
+}
+
+// FetchTags retrieves resource tags for an RDS instance or snapshot ARN as a
+// key-value map, for tag-based exclusion matching.
+func FetchTags(ctx context.Context, client RDSAPI, arn string) (map[string]string, error) {
+	out, err := client.ListTagsForResource(ctx, &awsrds.ListTagsForResourceInput{
+		ResourceName: aws.String(arn),
+	})
+	if err != nil {
+		return nil, err
+	}
+	tags := make(map[string]string, len(out.TagList))
+	for _, t := range out.TagList {
+		if t.Key == nil {
+			continue
+		}
+		tags[*t.Key] = deref(t.Value)
+	}
+	return tags, nil
 }
 
 // FetchInstanceMetrics retrieves CPU and connection metrics for an RDS instance.

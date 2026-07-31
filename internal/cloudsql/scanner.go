@@ -49,6 +49,9 @@ func (s *CloudSQLScanner) Scan(ctx context.Context, cfg database.ScanConfig, pro
 		if cfg.Exclude.IsExcluded(inst.Name) {
 			continue
 		}
+		if len(cfg.Exclude.Tags) > 0 && cfg.Exclude.MatchesExcludedTags(inst.Labels) {
+			continue
+		}
 		result.ResourcesScanned++
 		findings := s.analyzeInstance(cfg, inst)
 		result.Findings = append(result.Findings, findings...)

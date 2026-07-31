@@ -51,6 +51,12 @@ func (s *RDSScanner) Scan(ctx context.Context, cfg database.ScanConfig, progress
 		if cfg.Exclude.IsExcluded(inst.ID) {
 			continue
 		}
+		if len(cfg.Exclude.Tags) > 0 {
+			tags, err := FetchTags(ctx, s.client, inst.ARN)
+			if err == nil && cfg.Exclude.MatchesExcludedTags(tags) {
+				continue
+			}
+		}
 		result.ResourcesScanned++
 		findings := s.analyzeInstance(ctx, cfg, inst)
 		result.Findings = append(result.Findings, findings...)

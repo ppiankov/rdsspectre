@@ -19,6 +19,37 @@ func TestExcludeConfigIsExcludedNilMap(t *testing.T) {
 	}
 }
 
+func TestMatchesExcludedTagsExactMatch(t *testing.T) {
+	e := ExcludeConfig{Tags: map[string]string{"env": "temporary"}}
+	if !e.MatchesExcludedTags(map[string]string{"env": "temporary"}) {
+		t.Error("expected exact key=value match to exclude")
+	}
+}
+
+func TestMatchesExcludedTagsKeyOnlyWildcard(t *testing.T) {
+	e := ExcludeConfig{Tags: map[string]string{"temporary": ""}}
+	if !e.MatchesExcludedTags(map[string]string{"temporary": "anything"}) {
+		t.Error("empty configured value should match any value for that key")
+	}
+}
+
+func TestMatchesExcludedTagsNoMatch(t *testing.T) {
+	e := ExcludeConfig{Tags: map[string]string{"env": "temporary"}}
+	if e.MatchesExcludedTags(map[string]string{"env": "production"}) {
+		t.Error("mismatched value should not exclude")
+	}
+	if e.MatchesExcludedTags(map[string]string{"other": "temporary"}) {
+		t.Error("missing key should not exclude")
+	}
+}
+
+func TestMatchesExcludedTagsEmptyRules(t *testing.T) {
+	var e ExcludeConfig
+	if e.MatchesExcludedTags(map[string]string{"env": "production"}) {
+		t.Error("no configured rules should never exclude")
+	}
+}
+
 func TestReportProgressNilCallback(t *testing.T) {
 	// Must not panic when progress is nil.
 	ReportProgress(nil, "rds", "us-east-1", "scanning")

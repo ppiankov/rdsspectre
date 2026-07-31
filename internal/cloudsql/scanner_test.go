@@ -194,6 +194,49 @@ func TestScanReadReplica(t *testing.T) {
 	}
 }
 
+func TestScanExcludeByLabel(t *testing.T) {
+	mock := newMockClient()
+	mock.instances = []Instance{
+		makeInstance("tagged-db", "db-f1-micro", "POSTGRES_17", func(i *Instance) {
+			i.Labels = map[string]string{"env": "temporary"}
+			i.DeletionProtection = false // would normally be flagged
+		}),
+	}
+
+	cfg := defaultCfg()
+	cfg.Exclude.Tags = map[string]string{"env": "temporary"}
+
+	s := newTestScanner(mock)
+	result := s.Scan(context.Background(), cfg, nil)
+
+	if len(result.Findings) != 0 {
+		t.Errorf("expected 0 findings for label-excluded instance, got %d", len(result.Findings))
+	}
+	if result.ResourcesScanned != 0 {
+		t.Errorf("ResourcesScanned = %d, want 0 (label-excluded)", result.ResourcesScanned)
+	}
+}
+
+func TestScanLabelExcludeNoMatch(t *testing.T) {
+	mock := newMockClient()
+	mock.instances = []Instance{
+		makeInstance("keep-db", "db-f1-micro", "POSTGRES_17", func(i *Instance) {
+			i.Labels = map[string]string{"env": "production"}
+			i.DeletionProtection = false
+		}),
+	}
+
+	cfg := defaultCfg()
+	cfg.Exclude.Tags = map[string]string{"env": "temporary"}
+
+	s := newTestScanner(mock)
+	result := s.Scan(context.Background(), cfg, nil)
+
+	if len(findByID(result.Findings, database.FindingNoDeletionProtect)) != 1 {
+		t.Error("expected instance to still be flagged (label does not match exclusion)")
+	}
+}
+
 func TestScanNotReplica(t *testing.T) {
 	mock := newMockClient()
 	mock.instances = []Instance{

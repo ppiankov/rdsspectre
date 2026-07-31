@@ -57,19 +57,23 @@ func init() {
 }
 
 func runAWS(cmd *cobra.Command, _ []string) error {
+	// Load config and apply defaults before building the timeout context, so
+	// a config-file timeout can fall back into effect (WO-7).
+	cfg, err := config.Load(".")
+	if err != nil {
+		slog.Warn("Failed to load config file", "error", err)
+	}
+	if cfg.Provider != "" && cfg.Provider != "aws" {
+		return fmt.Errorf("config provider %q does not match the invoked \"aws\" subcommand", cfg.Provider)
+	}
+	applyAWSConfigDefaults(cmd, cfg)
+
 	ctx := cmd.Context()
 	if awsFlags.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, awsFlags.timeout)
 		defer cancel()
 	}
-
-	// Load config and apply defaults
-	cfg, err := config.Load(".")
-	if err != nil {
-		slog.Warn("Failed to load config file", "error", err)
-	}
-	applyAWSConfigDefaults(cmd, cfg)
 
 	// Resolve profile and region
 	profile := awsFlags.profile
@@ -180,6 +184,9 @@ func applyAWSConfigDefaults(cmd *cobra.Command, cfg config.Config) {
 	}
 	if !flags.Changed("min-monthly-cost") && cfg.MinMonthlyCost > 0 {
 		awsFlags.minMonthlyCost = cfg.MinMonthlyCost
+	}
+	if !flags.Changed("timeout") && cfg.TimeoutDuration() > 0 {
+		awsFlags.timeout = cfg.TimeoutDuration()
 	}
 }
 
