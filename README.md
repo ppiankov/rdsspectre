@@ -37,6 +37,16 @@ cd rdsspectre
 make build
 ```
 
+### Windows
+
+Download the `rdsspectre_<version>_windows_<arch>.zip` archive from the
+[latest release](https://github.com/ppiankov/rdsspectre/releases/latest),
+extract it, and run the binary from PowerShell or Command Prompt:
+
+```powershell
+.\rdsspectre.exe aws --region us-east-1 --format json
+```
+
 ### Usage
 
 ```sh
