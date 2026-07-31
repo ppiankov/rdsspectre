@@ -18,6 +18,7 @@ var severityRank = map[database.Severity]int{
 	database.SeverityLow:      3,
 }
 
+// WO-10: whole-function severity lookup, new for the severity-descending sort.
 func rankSeverity(s database.Severity) int {
 	if rank, ok := severityRank[s]; ok {
 		return rank

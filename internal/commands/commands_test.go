@@ -422,6 +422,7 @@ func TestRunGCPProviderMismatch(t *testing.T) {
 	}
 }
 
+// WO-7: exercises config-provider-vs-subcommand validation.
 func TestRunAWSProviderMismatch(t *testing.T) {
 	dir := t.TempDir()
 	cfgContent := "provider: gcp\n"

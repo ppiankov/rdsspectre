@@ -168,6 +168,7 @@ func runAWS(cmd *cobra.Command, _ []string) error {
 // equals the flag's built-in default; only cmd.Flags().Changed() can tell
 // "explicitly set to the default" apart from "never set".
 func applyAWSConfigDefaults(cmd *cobra.Command, cfg config.Config) {
+	// WO-8: cmd.Flags() drives the Changed()-based precedence checks below.
 	flags := cmd.Flags()
 	// WO-8: cmd.Flags().Changed() replaces the old flag==default sentinel
 	// for every check below, so an explicit flag always wins over config.

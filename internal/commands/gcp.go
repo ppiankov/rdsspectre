@@ -140,6 +140,7 @@ func runGCP(cmd *cobra.Command, _ []string) error {
 // applyGCPConfigDefaults fills unset flags from the config file.
 // Mirrors applyAWSConfigDefaults's cmd.Flags().Changed() precedence fix.
 func applyGCPConfigDefaults(cmd *cobra.Command, cfg config.Config) {
+	// WO-8: cmd.Flags() drives the Changed()-based precedence checks below.
 	flags := cmd.Flags()
 	// WO-8: cmd.Flags().Changed() replaces the old flag==default sentinel.
 	if !flags.Changed("format") && cfg.Format != "" {
