@@ -181,8 +181,16 @@ func TestScanReadReplica(t *testing.T) {
 	if len(hits) != 1 {
 		t.Errorf("expected 1 UNUSED_READ_REPLICA finding, got %d", len(hits))
 	}
-	if hits[0].EstimatedMonthlyWaste <= 0 {
-		t.Error("replica finding should have cost estimate")
+	// WO-11: usage is unconfirmed without Cloud Monitoring data, so this must
+	// not report High severity or claim a definite EstimatedMonthlyWaste.
+	if hits[0].Severity != database.SeverityLow {
+		t.Errorf("replica finding severity = %q, want %q (unconfirmed usage)", hits[0].Severity, database.SeverityLow)
+	}
+	if hits[0].EstimatedMonthlyWaste != 0 {
+		t.Errorf("replica finding should not claim confirmed waste, got %.2f", hits[0].EstimatedMonthlyWaste)
+	}
+	if cost, ok := hits[0].Metadata["estimated_monthly_cost"]; !ok || cost.(float64) <= 0 {
+		t.Error("replica finding should surface an informational estimated_monthly_cost in metadata")
 	}
 }
 

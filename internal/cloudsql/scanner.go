@@ -138,20 +138,25 @@ func (s *CloudSQLScanner) analyzeInstance(cfg database.ScanConfig, inst Instance
 		})
 	}
 
-	// UNUSED_READ_REPLICA: config-based detection (no metrics)
+	// UNUSED_READ_REPLICA: config-based detection only, no connection signal
+	// available (Cloud Monitoring deferred). WO-11: unlike the AWS path
+	// (rds/scanner.go), which only fires on a confirmed zero-connection
+	// window, usage here is genuinely unknown, so this reports Low severity
+	// with no claimed EstimatedMonthlyWaste rather than presenting the full
+	// instance cost as confirmed savings.
 	if inst.IsReplica {
 		findings = append(findings, database.Finding{
-			ID:                    database.FindingUnusedReadReplica,
-			Severity:              database.SeverityHigh,
-			ResourceType:          database.ResourceReplica,
-			ResourceID:            inst.Name,
-			Region:                region,
-			Message:               "Read replica detected (connection metrics unavailable without Cloud Monitoring)",
-			EstimatedMonthlyWaste: monthlyCost,
+			ID:           database.FindingUnusedReadReplica,
+			Severity:     database.SeverityLow,
+			ResourceType: database.ResourceReplica,
+			ResourceID:   inst.Name,
+			Region:       region,
+			Message:      "Read replica present; usage unknown (connection metrics unavailable without Cloud Monitoring) — verify before deleting",
 			Metadata: map[string]any{
-				"master_instance":  inst.MasterInstanceName,
-				"database_version": inst.DatabaseVersion,
-				"tier":             inst.Tier,
+				"master_instance":        inst.MasterInstanceName,
+				"database_version":       inst.DatabaseVersion,
+				"tier":                   inst.Tier,
+				"estimated_monthly_cost": monthlyCost,
 			},
 		})
 	}
