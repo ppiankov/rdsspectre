@@ -5,9 +5,39 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	cwtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
+	rdstypes "github.com/aws/aws-sdk-go-v2/service/rds/types"
 )
+
+// WO-7: exercises FetchTags.
+func TestFetchTags(t *testing.T) {
+	mock := newMockRDSClient()
+	mock.tagsForARN["arn:aws:rds:us-east-1:123456789012:db:mydb"] = []rdstypes.Tag{
+		{Key: aws.String("env"), Value: aws.String("production")},
+		{Key: aws.String("team"), Value: aws.String("platform")},
+	}
+
+	tags, err := FetchTags(context.Background(), mock, "arn:aws:rds:us-east-1:123456789012:db:mydb")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if tags["env"] != "production" || tags["team"] != "platform" {
+		t.Errorf("unexpected tags: %+v", tags)
+	}
+}
+
+// WO-7: exercises FetchTags.
+func TestFetchTagsError(t *testing.T) {
+	mock := newMockRDSClient()
+	mock.listTagsErr = errors.New("boom")
+
+	_, err := FetchTags(context.Background(), mock, "arn:aws:rds:us-east-1:123456789012:db:mydb")
+	if err == nil {
+		t.Error("expected error to propagate")
+	}
+}
 
 func TestFetchInstanceMetricsIdle(t *testing.T) {
 	cw := newMockCWClient()

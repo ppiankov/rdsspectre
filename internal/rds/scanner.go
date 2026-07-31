@@ -3,6 +3,7 @@ package rds
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -48,8 +49,18 @@ func (s *RDSScanner) Scan(ctx context.Context, cfg database.ScanConfig, progress
 		if inst.Status != "available" {
 			continue
 		}
-		if cfg.Exclude.ResourceIDs[inst.ID] {
+		// WO-9: use shared ExcludeConfig.IsExcluded helper instead of inline map lookup.
+		if cfg.Exclude.IsExcluded(inst.ID) {
 			continue
+		}
+		// WO-7: skip instances matching a configured exclude.tags rule.
+		if len(cfg.Exclude.Tags) > 0 {
+			tags, err := FetchTags(ctx, s.client, inst.ARN)
+			if err != nil {
+				slog.Warn("Failed to fetch tags for tag-based exclusion", "instance", inst.ID, "error", err)
+			} else if cfg.Exclude.MatchesExcludedTags(tags) {
+				continue
+			}
 		}
 		result.ResourcesScanned++
 		findings := s.analyzeInstance(ctx, cfg, inst)
@@ -64,7 +75,8 @@ func (s *RDSScanner) Scan(ctx context.Context, cfg database.ScanConfig, progress
 	} else {
 		s.reportProgress(progress, fmt.Sprintf("Found %d manual snapshots", len(snapshots)))
 		for _, snap := range snapshots {
-			if cfg.Exclude.ResourceIDs[snap.ID] {
+			// WO-9: use shared ExcludeConfig.IsExcluded helper instead of inline map lookup.
+			if cfg.Exclude.IsExcluded(snap.ID) {
 				continue
 			}
 			result.ResourcesScanned++
@@ -277,12 +289,6 @@ func (s *RDSScanner) analyzeSnapshot(cfg database.ScanConfig, snap Snapshot) []d
 }
 
 func (s *RDSScanner) reportProgress(progress func(database.ScanProgress), msg string) {
-	if progress != nil {
-		progress(database.ScanProgress{
-			Region:    s.region,
-			Scanner:   "rds",
-			Message:   msg,
-			Timestamp: time.Now(),
-		})
-	}
+	// WO-9: delegate to the shared database.ReportProgress helper.
+	database.ReportProgress(progress, "rds", s.region, msg)
 }

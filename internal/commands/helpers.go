@@ -34,6 +34,16 @@ func enhanceError(action string, err error) error {
 	return fmt.Errorf("%s: %w", action, err)
 }
 
+// WO-9: shared by aws.go/gcp.go instead of each building the map inline.
+// buildExcludeIDs converts a resource-ID list into the lookup map ScanConfig expects.
+func buildExcludeIDs(ids []string) map[string]bool {
+	m := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		m[id] = true
+	}
+	return m
+}
+
 // computeTargetHash generates a SHA256 hash for the target URI.
 func computeTargetHash(provider string, regions []string, project string) string {
 	input := fmt.Sprintf("provider:%s,regions:%s,project:%s", provider, strings.Join(regions, ","), project)

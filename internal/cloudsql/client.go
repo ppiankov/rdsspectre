@@ -32,6 +32,8 @@ type Instance struct {
 	MasterInstanceName string
 	CreateTime         time.Time
 	SelfLink           string
+	// WO-7: user labels, for tag-based exclusion matching.
+	Labels map[string]string
 }
 
 // Client wraps a Cloud SQL Admin API service.
@@ -91,6 +93,8 @@ func convertInstance(db *sqladmin.DatabaseInstance) Instance {
 		inst.DataDiskSizeGB = db.Settings.DataDiskSizeGb
 		inst.DataDiskType = db.Settings.DataDiskType
 		inst.DeletionProtection = db.Settings.DeletionProtectionEnabled
+		// WO-7: populate labels for tag-based exclusion.
+		inst.Labels = db.Settings.UserLabels
 
 		if db.Settings.BackupConfiguration != nil {
 			inst.BackupEnabled = db.Settings.BackupConfiguration.Enabled

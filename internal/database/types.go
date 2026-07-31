@@ -76,10 +76,43 @@ type ExcludeConfig struct {
 	Tags        map[string]string `json:"tags,omitempty"`
 }
 
+// WO-9: shared by rds/scanner.go and cloudsql/scanner.go instead of an inline lookup.
+// IsExcluded reports whether id is in the resource-ID exclusion list.
+func (e ExcludeConfig) IsExcluded(id string) bool {
+	return e.ResourceIDs[id]
+}
+
+// WO-7: tag/label-based exclusion for both AWS and GCP scanners.
+// MatchesExcludedTags reports whether tags matches any configured exclusion
+// rule. A configured value of "" matches any value for that key (key-only
+// exclusion, mirroring commands.parseExcludeTags's key-only tag syntax).
+func (e ExcludeConfig) MatchesExcludedTags(tags map[string]string) bool {
+	for k, want := range e.Tags {
+		if got, ok := tags[k]; ok && (want == "" || got == want) {
+			return true
+		}
+	}
+	return false
+}
+
 // ScanProgress reports scanning progress.
 type ScanProgress struct {
 	Region    string    `json:"region"`
 	Scanner   string    `json:"scanner"`
 	Message   string    `json:"message"`
 	Timestamp time.Time `json:"timestamp"`
+}
+
+// WO-9: shared by rds/scanner.go and cloudsql/scanner.go instead of duplicated boilerplate.
+// ReportProgress invokes progress with a ScanProgress if progress is non-nil.
+// Shared by per-provider scanners to avoid re-implementing the same guard.
+func ReportProgress(progress func(ScanProgress), scanner, region, msg string) {
+	if progress != nil {
+		progress(ScanProgress{
+			Region:    region,
+			Scanner:   scanner,
+			Message:   msg,
+			Timestamp: time.Now(),
+		})
+	}
 }

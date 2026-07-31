@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ppiankov/rdsspectre/internal/config"
 )
@@ -179,7 +180,8 @@ func TestSelectReporter(t *testing.T) {
 		{"invalid", true},
 	}
 	for _, tt := range tests {
-		r, err := selectReporter(tt.format, "")
+		// WO-12: selectReporter now returns an io.Closer alongside the reporter.
+		r, _, err := selectReporter(tt.format, "")
 		if tt.wantErr {
 			if err == nil {
 				t.Errorf("selectReporter(%q) should error", tt.format)
@@ -209,6 +211,25 @@ func TestParseExcludeTags(t *testing.T) {
 	}
 }
 
+// WO-9: exercises buildExcludeIDs.
+func TestBuildExcludeIDs(t *testing.T) {
+	m := buildExcludeIDs([]string{"mydb-prod", "mydb-staging"})
+	if !m["mydb-prod"] || !m["mydb-staging"] {
+		t.Errorf("expected both IDs present, got %+v", m)
+	}
+	if len(m) != 2 {
+		t.Errorf("len = %d, want 2", len(m))
+	}
+}
+
+// WO-9: exercises buildExcludeIDs.
+func TestBuildExcludeIDsEmpty(t *testing.T) {
+	m := buildExcludeIDs(nil)
+	if len(m) != 0 {
+		t.Errorf("expected empty map, got %+v", m)
+	}
+}
+
 func TestParseExcludeTagsEmpty(t *testing.T) {
 	tags := parseExcludeTags(nil, nil)
 	if tags != nil {
@@ -233,7 +254,8 @@ func TestApplyAWSConfigDefaults(t *testing.T) {
 		MinMonthlyCost: 1.0,
 	}
 
-	applyAWSConfigDefaults(cfg)
+	// WO-8: call site now passes cmd for Flags().Changed() precedence.
+	applyAWSConfigDefaults(awsCmd, cfg)
 
 	if awsFlags.format != "json" {
 		t.Errorf("format = %q, want json", awsFlags.format)
@@ -254,19 +276,27 @@ func TestApplyAWSConfigDefaults(t *testing.T) {
 	awsFlags.minMonthlyCost = 0.10
 }
 
+// WO-12: exercises the io.Closer returned for file-backed reporters.
 func TestSelectReporterOutputFile(t *testing.T) {
 	f := filepath.Join(t.TempDir(), "out.json")
-	r, err := selectReporter("json", f)
+	r, closer, err := selectReporter("json", f)
 	if err != nil {
 		t.Fatalf("selectReporter() error: %v", err)
 	}
 	if r == nil {
 		t.Fatal("selectReporter() returned nil")
 	}
+	if closer == nil {
+		t.Fatal("selectReporter() should return a non-nil closer for a file output")
+	}
+	if err := closer.Close(); err != nil {
+		t.Errorf("closer.Close() error: %v", err)
+	}
 }
 
 func TestSelectReporterBadPath(t *testing.T) {
-	_, err := selectReporter("json", "/nonexistent/dir/file.json")
+	// WO-12: selectReporter now returns an io.Closer alongside the reporter.
+	_, _, err := selectReporter("json", "/nonexistent/dir/file.json")
 	if err == nil {
 		t.Error("expected error for bad output path")
 	}
@@ -284,7 +314,8 @@ func TestApplyAWSConfigDefaultsNoOverride(t *testing.T) {
 	awsFlags.format = "text"
 	awsFlags.idleDays = 14
 	cfg := config.Config{} // all zero
-	applyAWSConfigDefaults(cfg)
+	// WO-8: call site now passes cmd for Flags().Changed() precedence.
+	applyAWSConfigDefaults(awsCmd, cfg)
 	if awsFlags.format != "text" {
 		t.Errorf("format should remain text, got %q", awsFlags.format)
 	}
@@ -301,7 +332,8 @@ func TestApplyGCPConfigDefaults(t *testing.T) {
 		Format:         "json",
 		MinMonthlyCost: 5.0,
 	}
-	applyGCPConfigDefaults(cfg)
+	// WO-8: call site now passes cmd for Flags().Changed() precedence.
+	applyGCPConfigDefaults(gcpCmd, cfg)
 
 	if gcpFlags.format != "json" {
 		t.Errorf("format = %q, want json", gcpFlags.format)
@@ -315,18 +347,133 @@ func TestApplyGCPConfigDefaults(t *testing.T) {
 	gcpFlags.minMonthlyCost = 0.10
 }
 
+// WO-8: exercises explicit-flag-wins-over-config precedence.
+func TestApplyAWSConfigDefaultsExplicitFlagWinsOverConfig(t *testing.T) {
+	// An explicit --idle-days=14 (equal to the built-in default) must
+	// win over a conflicting config file value, unlike the old sentinel check.
+	awsFlags.idleDays = 14
+	if err := awsCmd.Flags().Set("idle-days", "14"); err != nil {
+		t.Fatalf("Set() error: %v", err)
+	}
+	defer func() {
+		awsCmd.Flags().Lookup("idle-days").Changed = false
+		awsFlags.idleDays = 14
+	}()
+
+	cfg := config.Config{IdleDays: 30}
+	applyAWSConfigDefaults(awsCmd, cfg)
+
+	if awsFlags.idleDays != 14 {
+		t.Errorf("idleDays = %d, want 14 (explicit flag should win over config)", awsFlags.idleDays)
+	}
+}
+
+// WO-8: exercises explicit-flag-wins-over-config precedence.
+func TestApplyGCPConfigDefaultsExplicitFlagWinsOverConfig(t *testing.T) {
+	gcpFlags.minMonthlyCost = 0.10
+	if err := gcpCmd.Flags().Set("min-monthly-cost", "0.10"); err != nil {
+		t.Fatalf("Set() error: %v", err)
+	}
+	defer func() {
+		gcpCmd.Flags().Lookup("min-monthly-cost").Changed = false
+		gcpFlags.minMonthlyCost = 0.10
+	}()
+
+	cfg := config.Config{MinMonthlyCost: 5.0}
+	applyGCPConfigDefaults(gcpCmd, cfg)
+
+	if gcpFlags.minMonthlyCost != 0.10 {
+		t.Errorf("minMonthlyCost = %f, want 0.10 (explicit flag should win over config)", gcpFlags.minMonthlyCost)
+	}
+}
+
+// WO-7: exercises config-file timeout fallback.
+func TestApplyGCPConfigDefaultsTimeoutFallback(t *testing.T) {
+	gcpFlags.timeout = 10 * time.Minute
+	cfg := config.Config{Timeout: "5m"}
+	applyGCPConfigDefaults(gcpCmd, cfg)
+	if gcpFlags.timeout != 5*time.Minute {
+		t.Errorf("timeout = %v, want 5m (config fallback)", gcpFlags.timeout)
+	}
+	gcpFlags.timeout = 10 * time.Minute
+}
+
 func TestApplyGCPConfigDefaultsNoOverride(t *testing.T) {
 	gcpFlags.format = "text"
 	gcpFlags.minMonthlyCost = 0.10
 
 	cfg := config.Config{} // all zero
-	applyGCPConfigDefaults(cfg)
+	// WO-8: call site now passes cmd for Flags().Changed() precedence.
+	applyGCPConfigDefaults(gcpCmd, cfg)
 
 	if gcpFlags.format != "text" {
 		t.Errorf("format should remain text, got %q", gcpFlags.format)
 	}
 	if gcpFlags.minMonthlyCost != 0.10 {
 		t.Errorf("minMonthlyCost should remain 0.10, got %f", gcpFlags.minMonthlyCost)
+	}
+}
+
+// WO-7: exercises config-provider-vs-subcommand validation.
+func TestRunGCPProviderMismatch(t *testing.T) {
+	dir := t.TempDir()
+	cfgContent := "provider: aws\nproject: test-project\n"
+	if err := os.WriteFile(filepath.Join(dir, ".rdsspectre.yaml"), []byte(cfgContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	chdir(t, dir)
+
+	gcpFlags.project = ""
+	rootCmd.SetArgs([]string{"gcp"})
+	err := rootCmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Errorf("expected provider-mismatch error, got %v", err)
+	}
+}
+
+// WO-7: exercises config-provider-vs-subcommand validation.
+func TestRunAWSProviderMismatch(t *testing.T) {
+	dir := t.TempDir()
+	cfgContent := "provider: gcp\n"
+	if err := os.WriteFile(filepath.Join(dir, ".rdsspectre.yaml"), []byte(cfgContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	chdir(t, dir)
+
+	rootCmd.SetArgs([]string{"aws"})
+	err := rootCmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Errorf("expected provider-mismatch error, got %v", err)
+	}
+}
+
+// WO-7: exercises config-file timeout fallback.
+// WO-7: exercises config-file timeout fallback.
+func TestApplyAWSConfigDefaultsTimeoutFallback(t *testing.T) {
+	awsFlags.timeout = 10 * time.Minute
+	cfg := config.Config{Timeout: "5m"}
+	applyAWSConfigDefaults(awsCmd, cfg)
+	if awsFlags.timeout != 5*time.Minute {
+		t.Errorf("timeout = %v, want 5m (config fallback)", awsFlags.timeout)
+	}
+	awsFlags.timeout = 10 * time.Minute
+}
+
+// WO-7: exercises explicit --timeout winning over config fallback.
+func TestApplyAWSConfigDefaultsTimeoutExplicitWins(t *testing.T) {
+	awsFlags.timeout = 10 * time.Minute
+	if err := awsCmd.Flags().Set("timeout", "10m"); err != nil {
+		t.Fatalf("Set() error: %v", err)
+	}
+	defer func() {
+		awsCmd.Flags().Lookup("timeout").Changed = false
+		awsFlags.timeout = 10 * time.Minute
+	}()
+
+	cfg := config.Config{Timeout: "5m"}
+	applyAWSConfigDefaults(awsCmd, cfg)
+	if awsFlags.timeout != 10*time.Minute {
+		t.Errorf("timeout = %v, want 10m (explicit flag should win over config)", awsFlags.timeout)
 	}
 }
 

@@ -2,6 +2,75 @@ package database
 
 import "testing"
 
+// WO-9: exercises ExcludeConfig.IsExcluded.
+func TestExcludeConfigIsExcluded(t *testing.T) {
+	e := ExcludeConfig{ResourceIDs: map[string]bool{"mydb-prod": true}}
+	if !e.IsExcluded("mydb-prod") {
+		t.Error("expected mydb-prod to be excluded")
+	}
+	if e.IsExcluded("mydb-dev") {
+		t.Error("expected mydb-dev to not be excluded")
+	}
+}
+
+// WO-9: exercises ExcludeConfig.IsExcluded.
+func TestExcludeConfigIsExcludedNilMap(t *testing.T) {
+	var e ExcludeConfig
+	if e.IsExcluded("anything") {
+		t.Error("nil ResourceIDs should exclude nothing")
+	}
+}
+
+// WO-7: exercises ExcludeConfig.MatchesExcludedTags.
+func TestMatchesExcludedTagsExactMatch(t *testing.T) {
+	e := ExcludeConfig{Tags: map[string]string{"env": "temporary"}}
+	if !e.MatchesExcludedTags(map[string]string{"env": "temporary"}) {
+		t.Error("expected exact key=value match to exclude")
+	}
+}
+
+// WO-7: exercises ExcludeConfig.MatchesExcludedTags.
+func TestMatchesExcludedTagsKeyOnlyWildcard(t *testing.T) {
+	e := ExcludeConfig{Tags: map[string]string{"temporary": ""}}
+	if !e.MatchesExcludedTags(map[string]string{"temporary": "anything"}) {
+		t.Error("empty configured value should match any value for that key")
+	}
+}
+
+// WO-7: exercises ExcludeConfig.MatchesExcludedTags.
+func TestMatchesExcludedTagsNoMatch(t *testing.T) {
+	e := ExcludeConfig{Tags: map[string]string{"env": "temporary"}}
+	if e.MatchesExcludedTags(map[string]string{"env": "production"}) {
+		t.Error("mismatched value should not exclude")
+	}
+	if e.MatchesExcludedTags(map[string]string{"other": "temporary"}) {
+		t.Error("missing key should not exclude")
+	}
+}
+
+// WO-7: exercises ExcludeConfig.MatchesExcludedTags.
+func TestMatchesExcludedTagsEmptyRules(t *testing.T) {
+	var e ExcludeConfig
+	if e.MatchesExcludedTags(map[string]string{"env": "production"}) {
+		t.Error("no configured rules should never exclude")
+	}
+}
+
+// WO-9: exercises the shared ReportProgress helper.
+func TestReportProgressNilCallback(t *testing.T) {
+	// Must not panic when progress is nil.
+	ReportProgress(nil, "rds", "us-east-1", "scanning")
+}
+
+// WO-9: exercises the shared ReportProgress helper.
+func TestReportProgressInvokesCallback(t *testing.T) {
+	var got ScanProgress
+	ReportProgress(func(p ScanProgress) { got = p }, "cloudsql", "my-project", "listing instances")
+	if got.Scanner != "cloudsql" || got.Region != "my-project" || got.Message != "listing instances" {
+		t.Errorf("unexpected progress: %+v", got)
+	}
+}
+
 func TestSeverityConstants(t *testing.T) {
 	if SeverityCritical != "critical" {
 		t.Error("SeverityCritical mismatch")

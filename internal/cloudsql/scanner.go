@@ -46,7 +46,12 @@ func (s *CloudSQLScanner) Scan(ctx context.Context, cfg database.ScanConfig, pro
 		if inst.State != "RUNNABLE" {
 			continue
 		}
-		if cfg.Exclude.ResourceIDs[inst.Name] {
+		// WO-9: use shared ExcludeConfig.IsExcluded helper instead of inline map lookup.
+		if cfg.Exclude.IsExcluded(inst.Name) {
+			continue
+		}
+		// WO-7: skip instances matching a configured exclude.tags rule.
+		if len(cfg.Exclude.Tags) > 0 && cfg.Exclude.MatchesExcludedTags(inst.Labels) {
 			continue
 		}
 		result.ResourcesScanned++
@@ -138,20 +143,25 @@ func (s *CloudSQLScanner) analyzeInstance(cfg database.ScanConfig, inst Instance
 		})
 	}
 
-	// UNUSED_READ_REPLICA: config-based detection (no metrics)
+	// WO-11: UNUSED_READ_REPLICA config-based detection only, no connection signal
+	// available (Cloud Monitoring deferred). Unlike the AWS path
+	// (rds/scanner.go), which only fires on a confirmed zero-connection
+	// window, usage here is genuinely unknown, so this reports Low severity
+	// with no claimed EstimatedMonthlyWaste rather than presenting the full
+	// instance cost as confirmed savings.
 	if inst.IsReplica {
 		findings = append(findings, database.Finding{
-			ID:                    database.FindingUnusedReadReplica,
-			Severity:              database.SeverityHigh,
-			ResourceType:          database.ResourceReplica,
-			ResourceID:            inst.Name,
-			Region:                region,
-			Message:               "Read replica detected (connection metrics unavailable without Cloud Monitoring)",
-			EstimatedMonthlyWaste: monthlyCost,
+			ID:           database.FindingUnusedReadReplica,
+			Severity:     database.SeverityLow,
+			ResourceType: database.ResourceReplica,
+			ResourceID:   inst.Name,
+			Region:       region,
+			Message:      "Read replica present; usage unknown (connection metrics unavailable without Cloud Monitoring) — verify before deleting",
 			Metadata: map[string]any{
-				"master_instance":  inst.MasterInstanceName,
-				"database_version": inst.DatabaseVersion,
-				"tier":             inst.Tier,
+				"master_instance":        inst.MasterInstanceName,
+				"database_version":       inst.DatabaseVersion,
+				"tier":                   inst.Tier,
+				"estimated_monthly_cost": monthlyCost,
 			},
 		})
 	}
@@ -170,12 +180,6 @@ func hasPublicAccess(inst Instance) bool {
 }
 
 func (s *CloudSQLScanner) reportProgress(progress func(database.ScanProgress), msg string) {
-	if progress != nil {
-		progress(database.ScanProgress{
-			Region:    s.project,
-			Scanner:   "cloudsql",
-			Message:   msg,
-			Timestamp: time.Now(),
-		})
-	}
+	// WO-9: delegate to the shared database.ReportProgress helper.
+	database.ReportProgress(progress, "cloudsql", s.project, msg)
 }

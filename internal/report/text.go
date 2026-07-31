@@ -5,7 +5,26 @@ import (
 	"io"
 	"sort"
 	"text/tabwriter"
+
+	"github.com/ppiankov/rdsspectre/internal/database"
 )
+
+// WO-10: severityRank orders findings critical-first when rendering text output.
+// Unranked severities (should not occur) sort last, after low.
+var severityRank = map[database.Severity]int{
+	database.SeverityCritical: 0,
+	database.SeverityHigh:     1,
+	database.SeverityMedium:   2,
+	database.SeverityLow:      3,
+}
+
+// WO-10: whole-function severity lookup, new for the severity-descending sort.
+func rankSeverity(s database.Severity) int {
+	if rank, ok := severityRank[s]; ok {
+		return rank
+	}
+	return len(severityRank)
+}
 
 // TextReporter outputs human-readable text.
 type TextReporter struct {
@@ -25,8 +44,15 @@ func (r *TextReporter) Generate(data Data) error {
 		return w.Flush()
 	}
 
+	// WO-10: sort a clone by severity descending; never mutate the caller's slice.
+	sorted := make([]database.Finding, len(data.Findings))
+	copy(sorted, data.Findings)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return rankSeverity(sorted[i].Severity) < rankSeverity(sorted[j].Severity)
+	})
+
 	r.printf(w, "SEVERITY\tTYPE\tRESOURCE\tREGION\tWASTE/MO\tMESSAGE\n")
-	for _, f := range data.Findings {
+	for _, f := range sorted {
 		r.printf(w, "%s\t%s\t%s\t%s\t$%.2f\t%s\n",
 			f.Severity, f.ID, f.ResourceID, f.Region, f.EstimatedMonthlyWaste, f.Message)
 	}

@@ -181,8 +181,61 @@ func TestScanReadReplica(t *testing.T) {
 	if len(hits) != 1 {
 		t.Errorf("expected 1 UNUSED_READ_REPLICA finding, got %d", len(hits))
 	}
-	if hits[0].EstimatedMonthlyWaste <= 0 {
-		t.Error("replica finding should have cost estimate")
+	// WO-11: usage is unconfirmed without Cloud Monitoring data, so this must
+	// not report High severity or claim a definite EstimatedMonthlyWaste.
+	if hits[0].Severity != database.SeverityLow {
+		t.Errorf("replica finding severity = %q, want %q (unconfirmed usage)", hits[0].Severity, database.SeverityLow)
+	}
+	if hits[0].EstimatedMonthlyWaste != 0 {
+		t.Errorf("replica finding should not claim confirmed waste, got %.2f", hits[0].EstimatedMonthlyWaste)
+	}
+	if cost, ok := hits[0].Metadata["estimated_monthly_cost"]; !ok || cost.(float64) <= 0 {
+		t.Error("replica finding should surface an informational estimated_monthly_cost in metadata")
+	}
+}
+
+// WO-7: exercises tag/label-based exclusion.
+func TestScanExcludeByLabel(t *testing.T) {
+	mock := newMockClient()
+	mock.instances = []Instance{
+		makeInstance("tagged-db", "db-f1-micro", "POSTGRES_17", func(i *Instance) {
+			i.Labels = map[string]string{"env": "temporary"}
+			i.DeletionProtection = false // would normally be flagged
+		}),
+	}
+
+	cfg := defaultCfg()
+	cfg.Exclude.Tags = map[string]string{"env": "temporary"}
+
+	s := newTestScanner(mock)
+	result := s.Scan(context.Background(), cfg, nil)
+
+	if len(result.Findings) != 0 {
+		t.Errorf("expected 0 findings for label-excluded instance, got %d", len(result.Findings))
+	}
+	if result.ResourcesScanned != 0 {
+		t.Errorf("ResourcesScanned = %d, want 0 (label-excluded)", result.ResourcesScanned)
+	}
+}
+
+// WO-7: exercises tag/label-based exclusion.
+func TestScanLabelExcludeNoMatch(t *testing.T) {
+	mock := newMockClient()
+	mock.instances = []Instance{
+		makeInstance("keep-db", "db-f1-micro", "POSTGRES_17", func(i *Instance) {
+			i.Labels = map[string]string{"env": "production"}
+			i.DeletionProtection = false
+		}),
+	}
+
+	cfg := defaultCfg()
+	cfg.Exclude.Tags = map[string]string{"env": "temporary"}
+
+	s := newTestScanner(mock)
+	result := s.Scan(context.Background(), cfg, nil)
+
+	if len(findByID(result.Findings, database.FindingNoDeletionProtect)) != 1 {
+		t.Error("expected instance to still be flagged (label does not match exclusion)")
 	}
 }
 

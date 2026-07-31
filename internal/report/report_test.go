@@ -146,6 +146,44 @@ func TestSARIFRulesCount(t *testing.T) {
 	}
 }
 
+// WO-10: exercises severity-descending sort.
+func TestTextReporterSortsBySeverityDescending(t *testing.T) {
+	data := sampleData()
+	data.Findings = []database.Finding{
+		{ID: database.FindingIdleInstance, Severity: database.SeverityLow, ResourceID: "db-low", Message: "low"},
+		{ID: database.FindingIdleInstance, Severity: database.SeverityMedium, ResourceID: "db-medium", Message: "medium"},
+		{ID: database.FindingIdleInstance, Severity: database.SeverityCritical, ResourceID: "db-critical", Message: "critical"},
+		{ID: database.FindingIdleInstance, Severity: database.SeverityHigh, ResourceID: "db-high", Message: "high"},
+	}
+	var buf bytes.Buffer
+	r := &TextReporter{Writer: &buf}
+	if err := r.Generate(data); err != nil {
+		t.Fatalf("Generate() error: %v", err)
+	}
+	out := buf.String()
+	positions := map[string]int{
+		"db-critical": strings.Index(out, "db-critical"),
+		"db-high":     strings.Index(out, "db-high"),
+		"db-medium":   strings.Index(out, "db-medium"),
+		"db-low":      strings.Index(out, "db-low"),
+	}
+	for id, pos := range positions {
+		if pos == -1 {
+			t.Fatalf("missing resource %s in output", id)
+		}
+	}
+	if positions["db-critical"] >= positions["db-high"] ||
+		positions["db-high"] >= positions["db-medium"] ||
+		positions["db-medium"] >= positions["db-low"] {
+		t.Errorf("findings not sorted severity-descending, got positions %+v", positions)
+	}
+
+	// data.Findings must remain unmutated by Generate (no in-place sort of caller's slice).
+	if data.Findings[0].ResourceID != "db-low" {
+		t.Errorf("Generate() mutated caller's Findings slice; first element = %s, want db-low", data.Findings[0].ResourceID)
+	}
+}
+
 func TestTextReporterWithErrors(t *testing.T) {
 	data := sampleData()
 	data.Errors = []string{"region us-west-2 failed: timeout"}

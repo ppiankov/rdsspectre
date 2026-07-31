@@ -44,19 +44,24 @@ func init() {
 }
 
 func runGCP(cmd *cobra.Command, _ []string) error {
+	// WO-7: load config and apply defaults before building the timeout
+	// context, so a config-file timeout can fall back into effect.
+	cfg, err := config.Load(".")
+	if err != nil {
+		slog.Warn("Failed to load config file", "error", err)
+	}
+	// WO-7: reject a config provider that doesn't match the invoked subcommand.
+	if cfg.Provider != "" && cfg.Provider != "gcp" {
+		return fmt.Errorf("config provider %q does not match the invoked \"gcp\" subcommand", cfg.Provider)
+	}
+	applyGCPConfigDefaults(cmd, cfg)
+
 	ctx := cmd.Context()
 	if gcpFlags.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, gcpFlags.timeout)
 		defer cancel()
 	}
-
-	// Load config and apply defaults
-	cfg, err := config.Load(".")
-	if err != nil {
-		slog.Warn("Failed to load config file", "error", err)
-	}
-	applyGCPConfigDefaults(cfg)
 
 	// Resolve project
 	project := gcpFlags.project
@@ -76,10 +81,8 @@ func runGCP(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Build scan config
-	excludeIDs := make(map[string]bool, len(cfg.Exclude.ResourceIDs))
-	for _, id := range cfg.Exclude.ResourceIDs {
-		excludeIDs[id] = true
-	}
+	// WO-9: shared helper instead of an inline map-building loop.
+	excludeIDs := buildExcludeIDs(cfg.Exclude.ResourceIDs)
 	excludeTags := parseExcludeTags(cfg.Exclude.Tags, gcpFlags.excludeTags)
 
 	scanCfg := database.ScanConfig{
@@ -127,18 +130,37 @@ func runGCP(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Select and run reporter
-	reporter, err := selectReporter(gcpFlags.format, gcpFlags.outputFile)
+	// WO-12: close the output file after Generate; open handles are fatal
+	// to temp-dir cleanup on Windows.
+	reporter, closer, err := selectReporter(gcpFlags.format, gcpFlags.outputFile)
 	if err != nil {
 		return err
+	}
+	if closer != nil {
+		defer func() {
+			if cerr := closer.Close(); cerr != nil {
+				slog.Warn("Failed to close output file", "error", cerr)
+			}
+		}()
 	}
 	return reporter.Generate(data)
 }
 
-func applyGCPConfigDefaults(cfg config.Config) {
-	if gcpFlags.format == "text" && cfg.Format != "" {
+// applyGCPConfigDefaults fills unset flags from the config file.
+// Mirrors applyAWSConfigDefaults's cmd.Flags().Changed() precedence fix.
+func applyGCPConfigDefaults(cmd *cobra.Command, cfg config.Config) {
+	// WO-8: cmd.Flags() drives the Changed()-based precedence checks below.
+	flags := cmd.Flags()
+	// WO-8: cmd.Flags().Changed() replaces the old flag==default sentinel.
+	if !flags.Changed("format") && cfg.Format != "" {
 		gcpFlags.format = cfg.Format
 	}
-	if gcpFlags.minMonthlyCost == 0.10 && cfg.MinMonthlyCost > 0 {
+	// WO-8: see above.
+	if !flags.Changed("min-monthly-cost") && cfg.MinMonthlyCost > 0 {
 		gcpFlags.minMonthlyCost = cfg.MinMonthlyCost
+	}
+	// WO-7: config-file timeout falls back into effect only if --timeout wasn't explicit.
+	if !flags.Changed("timeout") && cfg.TimeoutDuration() > 0 {
+		gcpFlags.timeout = cfg.TimeoutDuration()
 	}
 }

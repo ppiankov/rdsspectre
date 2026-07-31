@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -57,19 +58,24 @@ func init() {
 }
 
 func runAWS(cmd *cobra.Command, _ []string) error {
+	// WO-7: load config and apply defaults before building the timeout
+	// context, so a config-file timeout can fall back into effect.
+	cfg, err := config.Load(".")
+	if err != nil {
+		slog.Warn("Failed to load config file", "error", err)
+	}
+	// WO-7: reject a config provider that doesn't match the invoked subcommand.
+	if cfg.Provider != "" && cfg.Provider != "aws" {
+		return fmt.Errorf("config provider %q does not match the invoked \"aws\" subcommand", cfg.Provider)
+	}
+	applyAWSConfigDefaults(cmd, cfg)
+
 	ctx := cmd.Context()
 	if awsFlags.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, awsFlags.timeout)
 		defer cancel()
 	}
-
-	// Load config and apply defaults
-	cfg, err := config.Load(".")
-	if err != nil {
-		slog.Warn("Failed to load config file", "error", err)
-	}
-	applyAWSConfigDefaults(cfg)
 
 	// Resolve profile and region
 	profile := awsFlags.profile
@@ -94,10 +100,8 @@ func runAWS(cmd *cobra.Command, _ []string) error {
 	slog.Info("Scanning RDS", "region", resolvedRegion)
 
 	// Build scan config
-	excludeIDs := make(map[string]bool, len(cfg.Exclude.ResourceIDs))
-	for _, id := range cfg.Exclude.ResourceIDs {
-		excludeIDs[id] = true
-	}
+	// WO-9: shared helper instead of an inline map-building loop.
+	excludeIDs := buildExcludeIDs(cfg.Exclude.ResourceIDs)
 	excludeTags := parseExcludeTags(cfg.Exclude.Tags, awsFlags.excludeTags)
 
 	scanCfg := database.ScanConfig{
@@ -153,55 +157,86 @@ func runAWS(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Select and run reporter
-	reporter, err := selectReporter(awsFlags.format, awsFlags.outputFile)
+	// WO-12: close the output file after Generate so temp-dir cleanup
+	// (and any later read of the file) doesn't race an open handle,
+	// which is fatal on Windows.
+	reporter, closer, err := selectReporter(awsFlags.format, awsFlags.outputFile)
 	if err != nil {
 		return err
+	}
+	if closer != nil {
+		defer func() {
+			if cerr := closer.Close(); cerr != nil {
+				slog.Warn("Failed to close output file", "error", cerr)
+			}
+		}()
 	}
 	return reporter.Generate(data)
 }
 
-func applyAWSConfigDefaults(cfg config.Config) {
-	if awsFlags.format == "text" && cfg.Format != "" {
+// applyAWSConfigDefaults fills unset flags from the config file.
+// An explicit CLI flag always wins over config, even when its value
+// equals the flag's built-in default; only cmd.Flags().Changed() can tell
+// "explicitly set to the default" apart from "never set".
+func applyAWSConfigDefaults(cmd *cobra.Command, cfg config.Config) {
+	// WO-8: cmd.Flags() drives the Changed()-based precedence checks below.
+	flags := cmd.Flags()
+	// WO-8: cmd.Flags().Changed() replaces the old flag==default sentinel
+	// for every check below, so an explicit flag always wins over config.
+	if !flags.Changed("format") && cfg.Format != "" {
 		awsFlags.format = cfg.Format
 	}
-	if awsFlags.idleDays == 14 && cfg.IdleDays > 0 {
+	// WO-8: see above.
+	if !flags.Changed("idle-days") && cfg.IdleDays > 0 {
 		awsFlags.idleDays = cfg.IdleDays
 	}
-	if awsFlags.staleDays == 90 && cfg.StaleDays > 0 {
+	// WO-8: see above.
+	if !flags.Changed("stale-days") && cfg.StaleDays > 0 {
 		awsFlags.staleDays = cfg.StaleDays
 	}
-	if awsFlags.cpuThreshold == 20.0 && cfg.CPUThreshold > 0 {
+	// WO-8: see above.
+	if !flags.Changed("cpu-threshold") && cfg.CPUThreshold > 0 {
 		awsFlags.cpuThreshold = cfg.CPUThreshold
 	}
-	if awsFlags.metricDays == 14 && cfg.MetricDays > 0 {
+	// WO-8: see above.
+	if !flags.Changed("metric-days") && cfg.MetricDays > 0 {
 		awsFlags.metricDays = cfg.MetricDays
 	}
-	if awsFlags.minMonthlyCost == 0.10 && cfg.MinMonthlyCost > 0 {
+	// WO-8: see above.
+	if !flags.Changed("min-monthly-cost") && cfg.MinMonthlyCost > 0 {
 		awsFlags.minMonthlyCost = cfg.MinMonthlyCost
+	}
+	// WO-7: config-file timeout falls back into effect only if --timeout wasn't explicit.
+	if !flags.Changed("timeout") && cfg.TimeoutDuration() > 0 {
+		awsFlags.timeout = cfg.TimeoutDuration()
 	}
 }
 
-func selectReporter(format, outputFile string) (report.Reporter, error) {
-	w := os.Stdout
+// WO-12: also returns an io.Closer (nil for stdout) so callers can close the
+// output file after Generate instead of leaking the handle until process exit.
+func selectReporter(format, outputFile string) (report.Reporter, io.Closer, error) {
+	var w io.Writer = os.Stdout
+	var closer io.Closer
 	if outputFile != "" {
 		f, err := os.Create(outputFile)
 		if err != nil {
-			return nil, fmt.Errorf("create output file: %w", err)
+			return nil, nil, fmt.Errorf("create output file: %w", err)
 		}
 		w = f
+		closer = f
 	}
 
 	switch format {
 	case "json":
-		return &report.JSONReporter{Writer: w}, nil
+		return &report.JSONReporter{Writer: w}, closer, nil
 	case "text":
-		return &report.TextReporter{Writer: w}, nil
+		return &report.TextReporter{Writer: w}, closer, nil
 	case "sarif":
-		return &report.SARIFReporter{Writer: w}, nil
+		return &report.SARIFReporter{Writer: w}, closer, nil
 	case "spectrehub":
-		return &report.SpectreHubReporter{Writer: w}, nil
+		return &report.SpectreHubReporter{Writer: w}, closer, nil
 	default:
-		return nil, fmt.Errorf("unsupported format: %s (use text, json, sarif, or spectrehub)", format)
+		return nil, closer, fmt.Errorf("unsupported format: %s (use text, json, sarif, or spectrehub)", format)
 	}
 }
 
