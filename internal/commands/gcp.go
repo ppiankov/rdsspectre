@@ -44,12 +44,13 @@ func init() {
 }
 
 func runGCP(cmd *cobra.Command, _ []string) error {
-	// Load config and apply defaults before building the timeout context, so
-	// a config-file timeout can fall back into effect.
+	// WO-7: load config and apply defaults before building the timeout
+	// context, so a config-file timeout can fall back into effect.
 	cfg, err := config.Load(".")
 	if err != nil {
 		slog.Warn("Failed to load config file", "error", err)
 	}
+	// WO-7: reject a config provider that doesn't match the invoked subcommand.
 	if cfg.Provider != "" && cfg.Provider != "gcp" {
 		return fmt.Errorf("config provider %q does not match the invoked \"gcp\" subcommand", cfg.Provider)
 	}
@@ -80,6 +81,7 @@ func runGCP(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Build scan config
+	// WO-9: shared helper instead of an inline map-building loop.
 	excludeIDs := buildExcludeIDs(cfg.Exclude.ResourceIDs)
 	excludeTags := parseExcludeTags(cfg.Exclude.Tags, gcpFlags.excludeTags)
 
@@ -139,12 +141,15 @@ func runGCP(cmd *cobra.Command, _ []string) error {
 // Mirrors applyAWSConfigDefaults's cmd.Flags().Changed() precedence fix.
 func applyGCPConfigDefaults(cmd *cobra.Command, cfg config.Config) {
 	flags := cmd.Flags()
+	// WO-8: cmd.Flags().Changed() replaces the old flag==default sentinel.
 	if !flags.Changed("format") && cfg.Format != "" {
 		gcpFlags.format = cfg.Format
 	}
+	// WO-8: see above.
 	if !flags.Changed("min-monthly-cost") && cfg.MinMonthlyCost > 0 {
 		gcpFlags.minMonthlyCost = cfg.MinMonthlyCost
 	}
+	// WO-7: config-file timeout falls back into effect only if --timeout wasn't explicit.
 	if !flags.Changed("timeout") && cfg.TimeoutDuration() > 0 {
 		gcpFlags.timeout = cfg.TimeoutDuration()
 	}

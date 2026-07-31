@@ -11,6 +11,7 @@ import (
 	rdstypes "github.com/aws/aws-sdk-go-v2/service/rds/types"
 )
 
+// WO-7: exercises FetchTags.
 func TestFetchTags(t *testing.T) {
 	mock := newMockRDSClient()
 	mock.tagsForARN["arn:aws:rds:us-east-1:123456789012:db:mydb"] = []rdstypes.Tag{
@@ -27,6 +28,7 @@ func TestFetchTags(t *testing.T) {
 	}
 }
 
+// WO-7: exercises FetchTags.
 func TestFetchTagsError(t *testing.T) {
 	mock := newMockRDSClient()
 	mock.listTagsErr = errors.New("boom")

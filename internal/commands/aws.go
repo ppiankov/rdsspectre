@@ -57,12 +57,13 @@ func init() {
 }
 
 func runAWS(cmd *cobra.Command, _ []string) error {
-	// Load config and apply defaults before building the timeout context, so
-	// a config-file timeout can fall back into effect.
+	// WO-7: load config and apply defaults before building the timeout
+	// context, so a config-file timeout can fall back into effect.
 	cfg, err := config.Load(".")
 	if err != nil {
 		slog.Warn("Failed to load config file", "error", err)
 	}
+	// WO-7: reject a config provider that doesn't match the invoked subcommand.
 	if cfg.Provider != "" && cfg.Provider != "aws" {
 		return fmt.Errorf("config provider %q does not match the invoked \"aws\" subcommand", cfg.Provider)
 	}
@@ -98,6 +99,7 @@ func runAWS(cmd *cobra.Command, _ []string) error {
 	slog.Info("Scanning RDS", "region", resolvedRegion)
 
 	// Build scan config
+	// WO-9: shared helper instead of an inline map-building loop.
 	excludeIDs := buildExcludeIDs(cfg.Exclude.ResourceIDs)
 	excludeTags := parseExcludeTags(cfg.Exclude.Tags, awsFlags.excludeTags)
 
@@ -167,24 +169,32 @@ func runAWS(cmd *cobra.Command, _ []string) error {
 // "explicitly set to the default" apart from "never set".
 func applyAWSConfigDefaults(cmd *cobra.Command, cfg config.Config) {
 	flags := cmd.Flags()
+	// WO-8: cmd.Flags().Changed() replaces the old flag==default sentinel
+	// for every check below, so an explicit flag always wins over config.
 	if !flags.Changed("format") && cfg.Format != "" {
 		awsFlags.format = cfg.Format
 	}
+	// WO-8: see above.
 	if !flags.Changed("idle-days") && cfg.IdleDays > 0 {
 		awsFlags.idleDays = cfg.IdleDays
 	}
+	// WO-8: see above.
 	if !flags.Changed("stale-days") && cfg.StaleDays > 0 {
 		awsFlags.staleDays = cfg.StaleDays
 	}
+	// WO-8: see above.
 	if !flags.Changed("cpu-threshold") && cfg.CPUThreshold > 0 {
 		awsFlags.cpuThreshold = cfg.CPUThreshold
 	}
+	// WO-8: see above.
 	if !flags.Changed("metric-days") && cfg.MetricDays > 0 {
 		awsFlags.metricDays = cfg.MetricDays
 	}
+	// WO-8: see above.
 	if !flags.Changed("min-monthly-cost") && cfg.MinMonthlyCost > 0 {
 		awsFlags.minMonthlyCost = cfg.MinMonthlyCost
 	}
+	// WO-7: config-file timeout falls back into effect only if --timeout wasn't explicit.
 	if !flags.Changed("timeout") && cfg.TimeoutDuration() > 0 {
 		awsFlags.timeout = cfg.TimeoutDuration()
 	}

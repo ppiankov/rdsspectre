@@ -2,6 +2,7 @@ package database
 
 import "testing"
 
+// WO-9: exercises ExcludeConfig.IsExcluded.
 func TestExcludeConfigIsExcluded(t *testing.T) {
 	e := ExcludeConfig{ResourceIDs: map[string]bool{"mydb-prod": true}}
 	if !e.IsExcluded("mydb-prod") {
@@ -12,6 +13,7 @@ func TestExcludeConfigIsExcluded(t *testing.T) {
 	}
 }
 
+// WO-9: exercises ExcludeConfig.IsExcluded.
 func TestExcludeConfigIsExcludedNilMap(t *testing.T) {
 	var e ExcludeConfig
 	if e.IsExcluded("anything") {
@@ -19,6 +21,7 @@ func TestExcludeConfigIsExcludedNilMap(t *testing.T) {
 	}
 }
 
+// WO-7: exercises ExcludeConfig.MatchesExcludedTags.
 func TestMatchesExcludedTagsExactMatch(t *testing.T) {
 	e := ExcludeConfig{Tags: map[string]string{"env": "temporary"}}
 	if !e.MatchesExcludedTags(map[string]string{"env": "temporary"}) {
@@ -26,6 +29,7 @@ func TestMatchesExcludedTagsExactMatch(t *testing.T) {
 	}
 }
 
+// WO-7: exercises ExcludeConfig.MatchesExcludedTags.
 func TestMatchesExcludedTagsKeyOnlyWildcard(t *testing.T) {
 	e := ExcludeConfig{Tags: map[string]string{"temporary": ""}}
 	if !e.MatchesExcludedTags(map[string]string{"temporary": "anything"}) {
@@ -33,6 +37,7 @@ func TestMatchesExcludedTagsKeyOnlyWildcard(t *testing.T) {
 	}
 }
 
+// WO-7: exercises ExcludeConfig.MatchesExcludedTags.
 func TestMatchesExcludedTagsNoMatch(t *testing.T) {
 	e := ExcludeConfig{Tags: map[string]string{"env": "temporary"}}
 	if e.MatchesExcludedTags(map[string]string{"env": "production"}) {
@@ -43,6 +48,7 @@ func TestMatchesExcludedTagsNoMatch(t *testing.T) {
 	}
 }
 
+// WO-7: exercises ExcludeConfig.MatchesExcludedTags.
 func TestMatchesExcludedTagsEmptyRules(t *testing.T) {
 	var e ExcludeConfig
 	if e.MatchesExcludedTags(map[string]string{"env": "production"}) {
@@ -50,11 +56,13 @@ func TestMatchesExcludedTagsEmptyRules(t *testing.T) {
 	}
 }
 
+// WO-9: exercises the shared ReportProgress helper.
 func TestReportProgressNilCallback(t *testing.T) {
 	// Must not panic when progress is nil.
 	ReportProgress(nil, "rds", "us-east-1", "scanning")
 }
 
+// WO-9: exercises the shared ReportProgress helper.
 func TestReportProgressInvokesCallback(t *testing.T) {
 	var got ScanProgress
 	ReportProgress(func(p ScanProgress) { got = p }, "cloudsql", "my-project", "listing instances")

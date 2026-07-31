@@ -394,6 +394,7 @@ func TestScanExcludeInstance(t *testing.T) {
 	}
 }
 
+// WO-7: exercises tag-based exclusion.
 func TestScanExcludeByTag(t *testing.T) {
 	mock := newMockRDSClient()
 	mock.instances = []rdstypes.DBInstance{
@@ -421,6 +422,7 @@ func TestScanExcludeByTag(t *testing.T) {
 	}
 }
 
+// WO-7: exercises tag-based exclusion.
 func TestScanTagExcludeNoMatch(t *testing.T) {
 	mock := newMockRDSClient()
 	mock.instances = []rdstypes.DBInstance{

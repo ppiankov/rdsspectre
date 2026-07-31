@@ -46,9 +46,11 @@ func (s *CloudSQLScanner) Scan(ctx context.Context, cfg database.ScanConfig, pro
 		if inst.State != "RUNNABLE" {
 			continue
 		}
+		// WO-9: use shared ExcludeConfig.IsExcluded helper instead of inline map lookup.
 		if cfg.Exclude.IsExcluded(inst.Name) {
 			continue
 		}
+		// WO-7: skip instances matching a configured exclude.tags rule.
 		if len(cfg.Exclude.Tags) > 0 && cfg.Exclude.MatchesExcludedTags(inst.Labels) {
 			continue
 		}
@@ -141,7 +143,7 @@ func (s *CloudSQLScanner) analyzeInstance(cfg database.ScanConfig, inst Instance
 		})
 	}
 
-	// UNUSED_READ_REPLICA: config-based detection only, no connection signal
+	// WO-11: UNUSED_READ_REPLICA config-based detection only, no connection signal
 	// available (Cloud Monitoring deferred). Unlike the AWS path
 	// (rds/scanner.go), which only fires on a confirmed zero-connection
 	// window, usage here is genuinely unknown, so this reports Low severity
@@ -178,5 +180,6 @@ func hasPublicAccess(inst Instance) bool {
 }
 
 func (s *CloudSQLScanner) reportProgress(progress func(database.ScanProgress), msg string) {
+	// WO-9: delegate to the shared database.ReportProgress helper.
 	database.ReportProgress(progress, "cloudsql", s.project, msg)
 }

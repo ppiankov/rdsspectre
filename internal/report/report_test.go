@@ -146,6 +146,7 @@ func TestSARIFRulesCount(t *testing.T) {
 	}
 }
 
+// WO-10: exercises severity-descending sort.
 func TestTextReporterSortsBySeverityDescending(t *testing.T) {
 	data := sampleData()
 	data.Findings = []database.Finding{

@@ -210,6 +210,7 @@ func TestParseExcludeTags(t *testing.T) {
 	}
 }
 
+// WO-9: exercises buildExcludeIDs.
 func TestBuildExcludeIDs(t *testing.T) {
 	m := buildExcludeIDs([]string{"mydb-prod", "mydb-staging"})
 	if !m["mydb-prod"] || !m["mydb-staging"] {
@@ -220,6 +221,7 @@ func TestBuildExcludeIDs(t *testing.T) {
 	}
 }
 
+// WO-9: exercises buildExcludeIDs.
 func TestBuildExcludeIDsEmpty(t *testing.T) {
 	m := buildExcludeIDs(nil)
 	if len(m) != 0 {
@@ -251,6 +253,7 @@ func TestApplyAWSConfigDefaults(t *testing.T) {
 		MinMonthlyCost: 1.0,
 	}
 
+	// WO-8: call site now passes cmd for Flags().Changed() precedence.
 	applyAWSConfigDefaults(awsCmd, cfg)
 
 	if awsFlags.format != "json" {
@@ -302,6 +305,7 @@ func TestApplyAWSConfigDefaultsNoOverride(t *testing.T) {
 	awsFlags.format = "text"
 	awsFlags.idleDays = 14
 	cfg := config.Config{} // all zero
+	// WO-8: call site now passes cmd for Flags().Changed() precedence.
 	applyAWSConfigDefaults(awsCmd, cfg)
 	if awsFlags.format != "text" {
 		t.Errorf("format should remain text, got %q", awsFlags.format)
@@ -319,6 +323,7 @@ func TestApplyGCPConfigDefaults(t *testing.T) {
 		Format:         "json",
 		MinMonthlyCost: 5.0,
 	}
+	// WO-8: call site now passes cmd for Flags().Changed() precedence.
 	applyGCPConfigDefaults(gcpCmd, cfg)
 
 	if gcpFlags.format != "json" {
@@ -333,6 +338,7 @@ func TestApplyGCPConfigDefaults(t *testing.T) {
 	gcpFlags.minMonthlyCost = 0.10
 }
 
+// WO-8: exercises explicit-flag-wins-over-config precedence.
 func TestApplyAWSConfigDefaultsExplicitFlagWinsOverConfig(t *testing.T) {
 	// An explicit --idle-days=14 (equal to the built-in default) must
 	// win over a conflicting config file value, unlike the old sentinel check.
@@ -353,6 +359,7 @@ func TestApplyAWSConfigDefaultsExplicitFlagWinsOverConfig(t *testing.T) {
 	}
 }
 
+// WO-8: exercises explicit-flag-wins-over-config precedence.
 func TestApplyGCPConfigDefaultsExplicitFlagWinsOverConfig(t *testing.T) {
 	gcpFlags.minMonthlyCost = 0.10
 	if err := gcpCmd.Flags().Set("min-monthly-cost", "0.10"); err != nil {
@@ -371,6 +378,7 @@ func TestApplyGCPConfigDefaultsExplicitFlagWinsOverConfig(t *testing.T) {
 	}
 }
 
+// WO-7: exercises config-file timeout fallback.
 func TestApplyGCPConfigDefaultsTimeoutFallback(t *testing.T) {
 	gcpFlags.timeout = 10 * time.Minute
 	cfg := config.Config{Timeout: "5m"}
@@ -386,6 +394,7 @@ func TestApplyGCPConfigDefaultsNoOverride(t *testing.T) {
 	gcpFlags.minMonthlyCost = 0.10
 
 	cfg := config.Config{} // all zero
+	// WO-8: call site now passes cmd for Flags().Changed() precedence.
 	applyGCPConfigDefaults(gcpCmd, cfg)
 
 	if gcpFlags.format != "text" {
@@ -396,6 +405,7 @@ func TestApplyGCPConfigDefaultsNoOverride(t *testing.T) {
 	}
 }
 
+// WO-7: exercises config-provider-vs-subcommand validation.
 func TestRunGCPProviderMismatch(t *testing.T) {
 	dir := t.TempDir()
 	cfgContent := "provider: aws\nproject: test-project\n"
@@ -427,6 +437,8 @@ func TestRunAWSProviderMismatch(t *testing.T) {
 	}
 }
 
+// WO-7: exercises config-file timeout fallback.
+// WO-7: exercises config-file timeout fallback.
 func TestApplyAWSConfigDefaultsTimeoutFallback(t *testing.T) {
 	awsFlags.timeout = 10 * time.Minute
 	cfg := config.Config{Timeout: "5m"}
@@ -437,6 +449,7 @@ func TestApplyAWSConfigDefaultsTimeoutFallback(t *testing.T) {
 	awsFlags.timeout = 10 * time.Minute
 }
 
+// WO-7: exercises explicit --timeout winning over config fallback.
 func TestApplyAWSConfigDefaultsTimeoutExplicitWins(t *testing.T) {
 	awsFlags.timeout = 10 * time.Minute
 	if err := awsCmd.Flags().Set("timeout", "10m"); err != nil {

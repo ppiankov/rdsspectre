@@ -9,7 +9,7 @@ import (
 	"github.com/ppiankov/rdsspectre/internal/database"
 )
 
-// severityRank orders findings critical-first when rendering text output.
+// WO-10: severityRank orders findings critical-first when rendering text output.
 // Unranked severities (should not occur) sort last, after low.
 var severityRank = map[database.Severity]int{
 	database.SeverityCritical: 0,
@@ -43,6 +43,7 @@ func (r *TextReporter) Generate(data Data) error {
 		return w.Flush()
 	}
 
+	// WO-10: sort a clone by severity descending; never mutate the caller's slice.
 	sorted := make([]database.Finding, len(data.Findings))
 	copy(sorted, data.Findings)
 	sort.SliceStable(sorted, func(i, j int) bool {

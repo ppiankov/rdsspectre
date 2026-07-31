@@ -19,6 +19,7 @@ type MetricStats struct {
 	DatapointCount int
 }
 
+// WO-7: enables tag-based exclusion in rds/scanner.go.
 // FetchTags retrieves resource tags for an RDS instance or snapshot ARN as a
 // key-value map, for tag-based exclusion matching.
 func FetchTags(ctx context.Context, client RDSAPI, arn string) (map[string]string, error) {
