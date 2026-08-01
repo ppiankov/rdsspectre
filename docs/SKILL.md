@@ -1,6 +1,6 @@
 # rdsspectre
 
-RDS instance security scanner.
+Managed database waste and security auditor for AWS RDS and GCP Cloud SQL.
 
 ## Install
 
@@ -16,78 +16,121 @@ go install github.com/ppiankov/rdsspectre/cmd/rdsspectre@latest
 
 ## Commands
 
-### rdsspectre scan
+### rdsspectre aws
 
-Scans RDS instances for security findings.
+Scans AWS RDS instances and manual snapshots for waste and security findings.
 
 **Flags:**
-- `--format json` — output as JSON (ANCC standard, alias for --output json)
-- `--output json` — output as JSON (spectre/v1 envelope)
-- `--output sarif` — SARIF format for CI integration
-- `--output spectrehub` — SpectreHub aggregator format
-- `--baseline path` — suppress known findings
+- `--region string` — AWS region (default: from AWS config)
+- `--profile string` — AWS profile name
+- `--idle-days int` — days of low activity to flag as idle (default 14)
+- `--stale-days int` — snapshot age threshold in days (default 90)
+- `--cpu-threshold float` — flag oversized if p95 CPU is below this percent (default 20.0)
+- `--idle-cpu float` — flag idle if avg CPU is below this percent (default 5.0)
+- `--metric-days int` — CloudWatch metric lookback period in days (default 14)
+- `--format string` — output format: text, json, sarif, spectrehub (default "text")
+- `-o, --output string` — output file path (default: stdout)
+- `--min-monthly-cost float` — minimum monthly cost to report, in USD (default 0.10)
+- `--no-progress` — disable progress output
+- `--timeout duration` — scan timeout (default 10m)
+- `--exclude-tags strings` — exclude resources by tag, `Key=Value`, comma-separated
 
-**JSON output:**
-```json
-{
-  "version": "spectre/v1",
-  "scanner": "rdsspectre",
-  "target": "RDS instances",
-  "findings": [
-    {
-      "id": "FIND-001",
-      "severity": "high",
-      "title": "finding description",
-      "resource": "resource identifier",
-      "detail": "detailed explanation"
-    }
-  ],
-  "summary": {
-    "total": 1,
-    "critical": 0,
-    "high": 1,
-    "medium": 0,
-    "low": 0
-  }
-}
-```
+### rdsspectre gcp
 
-**Exit codes:**
-- 0: scan complete, no findings
-- 1: scan complete, findings detected
-- 2: scan failed (connectivity, auth, config error)
+Scans GCP Cloud SQL instances for waste and security findings.
+
+**Flags:**
+- `--project string` — GCP project ID (required)
+- `--format string` — output format: text, json, sarif, spectrehub (default "text")
+- `-o, --output string` — output file path (default: stdout)
+- `--min-monthly-cost float` — minimum monthly cost to report, in USD (default 0.10)
+- `--no-progress` — disable progress output
+- `--timeout duration` — scan timeout (default 10m)
+- `--exclude-tags strings` — exclude resources by label, `Key=Value`, comma-separated
 
 ### rdsspectre init
 
-Initialize configuration with sensible defaults.
+Writes a sample `.rdsspectre.yaml` config and a read-only IAM policy
+(`rdsspectre-policy.json`) to the current directory.
+
+**Flags:**
+- `--force` — overwrite existing files
 
 **Exit codes:**
-- 0: config created
-- 1: config already exists or error
+- 0: files written, or already present and left unchanged (a message is printed; use `--force` to overwrite)
+
+### rdsspectre version
+
+Prints version, commit, and build date. No flags.
+
+**JSON output** (`--format json` on `aws`/`gcp`, `spectre/v1` schema):
+```json
+{
+  "schema": "spectre/v1",
+  "tool": "rdsspectre",
+  "version": "1.0.0",
+  "timestamp": "2026-08-01T00:00:00Z",
+  "target": {
+    "type": "rds",
+    "uri_hash": "sha256:abc123"
+  },
+  "config": {
+    "provider": "aws",
+    "regions": ["us-east-1"],
+    "idle_days": 14,
+    "stale_days": 90,
+    "cpu_threshold": 20.0,
+    "min_monthly_cost": 0.10
+  },
+  "findings": [
+    {
+      "id": "IDLE_INSTANCE",
+      "severity": "high",
+      "resource_type": "instance",
+      "resource_id": "mydb-prod",
+      "region": "us-east-1",
+      "message": "Instance idle for 14 days (avg CPU 2.1%, 0 connections)",
+      "estimated_monthly_waste": 124.10
+    }
+  ],
+  "summary": {
+    "total_findings": 1,
+    "instances_scanned": 5,
+    "resources_scanned": 5,
+    "total_monthly_waste": 124.10
+  },
+  "errors": []
+}
+```
+
+**Exit codes** (`aws`/`gcp`):
+- 0: scan completed — a clean account and a scan with findings both exit 0; check `findings`/`summary`, not the exit code, for results
+- 1: scan failed (authentication, network, invalid flags/config, or output-file write error)
 
 ## Handoffs
 
-- Output: spectre/v1 JSON envelope. Next: spectrehub for aggregation across scanners.
-- Output: SARIF. Next: CI security gates.
-- Refused questions: how to fix findings, whether to remediate, risk acceptance decisions.
+- Output: `spectre/v1` JSON envelope. Next: `spectrehub collect --tool rdsspectre` for aggregation across scanners.
+- Output: SARIF. Next: CI security-gate or code-scanning ingestion.
+- Refused questions: how to fix a finding, whether to remediate, risk-acceptance decisions — rdsspectre reports, it does not advise on remediation policy.
 
 ## What this does NOT do
 
-- Does not remediate or modify RDS instances — scan is read-only
-- Does not store findings or manage a findings database
-- Does not replace dedicated RDS instances monitoring — point-in-time security audit only
+- Does not modify, delete, or resize any RDS instance, snapshot, or Cloud SQL instance — strictly read-only
+- Does not execute SQL queries or profile database performance
+- Does not persist findings between runs or maintain a findings database
 
 ## Failure Modes
 
-- Authentication failure: returns exit code 2. Distrust: all findings fields. Safe fallback: report scan failure, do not cache.
-- Network timeout: returns exit code 2. Distrust: completeness of findings. Safe fallback: partial results with warning.
-- Rate limiting: returns partial findings with truncation warning. Distrust: summary counts.
+- Authentication failure (missing/expired AWS or GCP credentials): exits 1 before any scanning begins. Distrust: no findings are produced. Safe fallback: fix credentials and re-run; nothing is cached.
+- Network/API error on the initial list call: exits 1. Distrust: no findings for that run.
+- Per-resource API error during a scan (e.g. one region's metrics unavailable): the scan still completes and exits 0, with the problem surfaced in the `errors` array. Distrust: `summary` counts are incomplete whenever `errors` is non-empty.
 
 ## Parsing examples
 
 ```bash
-rdsspectre scan --output json | jq '.summary'
-rdsspectre scan --output json | jq '.findings[] | select(.severity == "critical")'
+rdsspectre aws --region us-east-1 --format json | jq '.summary'
+rdsspectre aws --region us-east-1 --format json | jq '.findings[] | select(.severity == "critical")'
+rdsspectre gcp --project my-project --format json | jq '.errors'
 ```
 
 ---

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-01
+
 ### Fixed
 - Windows build+test coverage in CI, plus a README Windows quick-start
 - Config keys (`provider`, `timeout`, `exclude.tags`) that were parsed but never
@@ -13,6 +15,9 @@
   figure without a real usage signal
 - `selectReporter`'s output file handle is now closed, fixing a Windows CI
   failure where an open handle blocked temp-directory cleanup
+- `docs/SKILL.md` described a nonexistent `scan` command and flags; rewritten
+  to match the real CLI (`aws`/`gcp`/`init`/`version`, real flags, real
+  `spectre/v1` JSON schema, real exit codes)
 
 ### Changed
 - Deduplicated exclusion-check and progress-reporting logic shared by the
