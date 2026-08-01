@@ -28,42 +28,14 @@ Scans AWS RDS instances and manual snapshots for waste and security findings.
 - `--cpu-threshold float` — flag oversized if p95 CPU is below this percent (default 20.0)
 - `--idle-cpu float` — flag idle if avg CPU is below this percent (default 5.0)
 - `--metric-days int` — CloudWatch metric lookback period in days (default 14)
-- `--format string` — output format: text, json, sarif, spectrehub (default "text")
+- `--format json` — output the `spectre/v1` JSON envelope (`--format` also accepts `text`, the default, `sarif`, and `spectrehub`)
 - `-o, --output string` — output file path (default: stdout)
 - `--min-monthly-cost float` — minimum monthly cost to report, in USD (default 0.10)
 - `--no-progress` — disable progress output
 - `--timeout duration` — scan timeout (default 10m)
 - `--exclude-tags strings` — exclude resources by tag, `Key=Value`, comma-separated
 
-### rdsspectre gcp
-
-Scans GCP Cloud SQL instances for waste and security findings.
-
-**Flags:**
-- `--project string` — GCP project ID (required)
-- `--format string` — output format: text, json, sarif, spectrehub (default "text")
-- `-o, --output string` — output file path (default: stdout)
-- `--min-monthly-cost float` — minimum monthly cost to report, in USD (default 0.10)
-- `--no-progress` — disable progress output
-- `--timeout duration` — scan timeout (default 10m)
-- `--exclude-tags strings` — exclude resources by label, `Key=Value`, comma-separated
-
-### rdsspectre init
-
-Writes a sample `.rdsspectre.yaml` config and a read-only IAM policy
-(`rdsspectre-policy.json`) to the current directory.
-
-**Flags:**
-- `--force` — overwrite existing files
-
-**Exit codes:**
-- 0: files written, or already present and left unchanged (a message is printed; use `--force` to overwrite)
-
-### rdsspectre version
-
-Prints version, commit, and build date. No flags.
-
-**JSON output** (`--format json` on `aws`/`gcp`, `spectre/v1` schema):
+**JSON output:** `gcp` uses the same envelope.
 ```json
 {
   "schema": "spectre/v1",
@@ -103,9 +75,39 @@ Prints version, commit, and build date. No flags.
 }
 ```
 
-**Exit codes** (`aws`/`gcp`):
+**Exit codes:**
 - 0: scan completed — a clean account and a scan with findings both exit 0; check `findings`/`summary`, not the exit code, for results
 - 1: scan failed (authentication, network, invalid flags/config, or output-file write error)
+
+### rdsspectre gcp
+
+Scans GCP Cloud SQL instances for waste and security findings.
+
+**Flags:**
+- `--project string` — GCP project ID (required)
+- `--format json` — output the same `spectre/v1` envelope as `aws` (`--format` also accepts `text`, the default, `sarif`, and `spectrehub`)
+- `-o, --output string` — output file path (default: stdout)
+- `--min-monthly-cost float` — minimum monthly cost to report, in USD (default 0.10)
+- `--no-progress` — disable progress output
+- `--timeout duration` — scan timeout (default 10m)
+- `--exclude-tags strings` — exclude resources by label, `Key=Value`, comma-separated
+
+**Exit codes:** same as `aws` above.
+
+### rdsspectre init
+
+Writes a sample `.rdsspectre.yaml` config and a read-only IAM policy
+(`rdsspectre-policy.json`) to the current directory.
+
+**Flags:**
+- `--force` — overwrite existing files
+
+**Exit codes:**
+- 0: files written, or already present and left unchanged (a message is printed; use `--force` to overwrite)
+
+### rdsspectre version
+
+Prints version, commit, and build date. No flags.
 
 ## Handoffs
 
