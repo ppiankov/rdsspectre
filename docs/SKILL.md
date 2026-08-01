@@ -28,14 +28,14 @@ Scans AWS RDS instances and manual snapshots for waste and security findings.
 - `--cpu-threshold float` — flag oversized if p95 CPU is below this percent (default 20.0)
 - `--idle-cpu float` — flag idle if avg CPU is below this percent (default 5.0)
 - `--metric-days int` — CloudWatch metric lookback period in days (default 14)
-- `--format string` — output format: `text` (default), `sarif`, `spectrehub`, or `--format json` for the `spectre/v1` envelope
+- `--format json` — output the `spectre/v1` JSON envelope (`--format` also accepts `text`, the default, `sarif`, and `spectrehub`)
 - `-o, --output string` — output file path (default: stdout)
 - `--min-monthly-cost float` — minimum monthly cost to report, in USD (default 0.10)
 - `--no-progress` — disable progress output
 - `--timeout duration` — scan timeout (default 10m)
 - `--exclude-tags strings` — exclude resources by tag, `Key=Value`, comma-separated
 
-**JSON output** (`--format json`, `spectre/v1` schema — `gcp` uses the same envelope):
+**JSON output:** `gcp` uses the same envelope.
 ```json
 {
   "schema": "spectre/v1",
@@ -85,7 +85,7 @@ Scans GCP Cloud SQL instances for waste and security findings.
 
 **Flags:**
 - `--project string` — GCP project ID (required)
-- `--format string` — output format: `text` (default), `sarif`, `spectrehub`, or `--format json` for the same `spectre/v1` envelope as `aws` (see above)
+- `--format json` — output the same `spectre/v1` envelope as `aws` (`--format` also accepts `text`, the default, `sarif`, and `spectrehub`)
 - `-o, --output string` — output file path (default: stdout)
 - `--min-monthly-cost float` — minimum monthly cost to report, in USD (default 0.10)
 - `--no-progress` — disable progress output
