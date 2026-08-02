@@ -249,6 +249,80 @@ func TestScanIdleInstance(t *testing.T) {
 	}
 }
 
+// WO-18: zero-connection idle is graded confident.
+func TestScanIdleInstanceZeroConnsIsConfident(t *testing.T) {
+	mock := newMockRDSClient()
+	mock.instances = []rdstypes.DBInstance{
+		makeInstance("idle-db", "db.t3.small", "postgres", "17.2"),
+	}
+	cw := newMockCWClient()
+	cw.metrics["CPUUtilization"] = makeCPUDatapoints(2.0, 4.0, 14)
+	cw.metrics["DatabaseConnections"] = makeConnDatapoints(0)
+
+	s := newTestScanner(mock, cw)
+	result := s.Scan(context.Background(), defaultCfg(), nil)
+
+	findings := findByID(result.Findings, database.FindingIdleInstance)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 IDLE_INSTANCE, got %d", len(findings))
+	}
+	if findings[0].Confidence != database.ConfidenceConfident {
+		t.Errorf("Confidence = %q, want %q for zero-connection idle", findings[0].Confidence, database.ConfidenceConfident)
+	}
+}
+
+// WO-18: a pooled-connection instance with near-zero IOPS is flagged idle.
+// Live-account shape of loyalty-prod: ~1.8 total IOPS with 6.7 pooled connections.
+func TestScanIdleInstancePooledButDead(t *testing.T) {
+	mock := newMockRDSClient()
+	mock.instances = []rdstypes.DBInstance{
+		makeInstance("loyalty-prod", "db.t4g.small", "postgres", "14.19"),
+	}
+	cw := newMockCWClient()
+	cw.metrics["CPUUtilization"] = makeCPUDatapoints(2.0, 4.0, 14)
+	cw.metrics["DatabaseConnections"] = makeConnDatapoints(7)
+	cw.metrics["ReadIOPS"] = makeWriteIOPSDatapoints(0.33, 14)
+	cw.metrics["WriteIOPS"] = makeWriteIOPSDatapoints(1.49, 14)
+
+	s := newTestScanner(mock, cw)
+	result := s.Scan(context.Background(), defaultCfg(), nil)
+
+	findings := findByID(result.Findings, database.FindingIdleInstance)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 IDLE_INSTANCE for pooled-but-dead instance, got %d (TotalConns==0 rule alone would have missed this)", len(findings))
+	}
+	if findings[0].Confidence != database.ConfidenceNeedsReview {
+		t.Errorf("Confidence = %q, want %q for pooled-connection idle", findings[0].Confidence, database.ConfidenceNeedsReview)
+	}
+	if len(findings[0].Countersignals) != 1 {
+		t.Fatalf("expected 1 countersignal, got %v", findings[0].Countersignals)
+	}
+	if !strings.Contains(findings[0].Countersignals[0], "pooled connections") {
+		t.Errorf("countersignal = %q, want it to name the pooled connections", findings[0].Countersignals[0])
+	}
+}
+
+// WO-18: a pooled-connection instance with active IOPS is NOT flagged idle.
+// It should fall through to the OVERSIZED_INSTANCE check instead.
+func TestScanIdleInstancePooledAndActiveNotIdle(t *testing.T) {
+	mock := newMockRDSClient()
+	mock.instances = []rdstypes.DBInstance{
+		makeInstance("active-db", "db.t4g.small", "postgres", "17.2"),
+	}
+	cw := newMockCWClient()
+	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)
+	cw.metrics["DatabaseConnections"] = makeConnDatapoints(50)
+	cw.metrics["ReadIOPS"] = makeWriteIOPSDatapoints(106.0, 14)
+	cw.metrics["WriteIOPS"] = makeWriteIOPSDatapoints(8.0, 14)
+
+	s := newTestScanner(mock, cw)
+	result := s.Scan(context.Background(), defaultCfg(), nil)
+
+	if len(findByID(result.Findings, database.FindingIdleInstance)) != 0 {
+		t.Error("should not flag an active instance as idle just because CPU is low")
+	}
+}
+
 func TestScanOversizedInstance(t *testing.T) {
 	mock := newMockRDSClient()
 	mock.instances = []rdstypes.DBInstance{

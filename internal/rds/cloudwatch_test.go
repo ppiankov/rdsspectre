@@ -230,3 +230,23 @@ func TestFetchInstanceMetricsWriteIOPS(t *testing.T) {
 		t.Errorf("AvgWriteIOPS = %.2f, want ~138.88", stats.AvgWriteIOPS)
 	}
 }
+
+// WO-18: average read IOPS is surfaced alongside write IOPS.
+func TestFetchInstanceMetricsReadIOPS(t *testing.T) {
+	cw := newMockCWClient()
+	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)
+	cw.metrics["DatabaseConnections"] = makeConnDatapoints(50)
+	cw.metrics["WriteIOPS"] = makeWriteIOPSDatapoints(1.49, 14)
+	cw.metrics["ReadIOPS"] = makeWriteIOPSDatapoints(0.33, 14)
+
+	stats, err := FetchInstanceMetrics(context.Background(), cw, "mydb", now, 14)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if stats.AvgReadIOPS < 0.2 || stats.AvgReadIOPS > 0.4 {
+		t.Errorf("AvgReadIOPS = %.2f, want ~0.33", stats.AvgReadIOPS)
+	}
+	if stats.AvgWriteIOPS < 1.3 || stats.AvgWriteIOPS > 1.6 {
+		t.Errorf("AvgWriteIOPS = %.2f, want ~1.49", stats.AvgWriteIOPS)
+	}
+}

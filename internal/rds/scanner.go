@@ -25,6 +25,13 @@ const (
 	writeIOPSBusyThreshold = 50.0
 )
 
+// WO-18: idleIOPSThreshold is the total average IOPS (read + write) below which
+// an instance is treated as effectively idle even when connection pools hold
+// connections open. Calibrated from live data: a genuinely dead instance
+// (loyalty-prod) averages ~1.8 IOPS; the lowest-activity live instance
+// (marketplace-prod) averages ~4.0 IOPS. 5.0 sits between those two clusters.
+const idleIOPSThreshold = 5.0
+
 // WO-17@v2: gradeOversized converts corroborating metrics into a confidence grade
 // plus human-readable countersignals. It never decides whether to emit — that
 // is the caller's job — it only reports how much the evidence agrees.
@@ -229,19 +236,39 @@ func (s *RDSScanner) analyzeInstance(ctx context.Context, cfg database.ScanConfi
 	if s.cw != nil && cfg.MetricDays > 0 {
 		metrics, err := FetchInstanceMetrics(ctx, s.cw, inst.ID, s.now, cfg.MetricDays)
 		if err == nil && metrics.HasData {
-			// Idle check: avg CPU < idle threshold AND zero connections
-			if metrics.AvgCPU < cfg.IdleCPU && metrics.TotalConns == 0 {
+			totalIOPS := metrics.AvgReadIOPS + metrics.AvgWriteIOPS
+			// WO-18: idle check — low CPU AND (zero connections OR near-zero IOPS).
+			// Connection pools hold connections open on dead apps, so TotalConns==0
+			// alone misses them. Total IOPS below the threshold catches a pooled
+			// but effectively dead instance (e.g. loyalty-prod: 1.8 IOPS, 6.7 conns).
+			if metrics.AvgCPU < cfg.IdleCPU && (metrics.TotalConns == 0 || totalIOPS < idleIOPSThreshold) {
+				// WO-18: a zero-connection idle is confident; a pooled-connection
+				// idle is graded needs-review because a warm pool does not prove
+				// the app is permanently dead.
+				confidence := database.ConfidenceConfident
+				var countersignals []string
+				if metrics.TotalConns > 0 {
+					confidence = database.ConfidenceNeedsReview
+					countersignals = append(countersignals, fmt.Sprintf(
+						"%.0f pooled connections but %.1f total IOPS (verify app is decommissioned)",
+						metrics.TotalConns, totalIOPS))
+				}
 				findings = append(findings, database.Finding{
 					ID:                    database.FindingIdleInstance,
 					Severity:              database.SeverityHigh,
 					ResourceType:          database.ResourceInstance,
 					ResourceID:            inst.ID,
 					Region:                s.region,
-					Message:               fmt.Sprintf("Instance idle for %d days (avg CPU %.1f%%, 0 connections)", cfg.MetricDays, metrics.AvgCPU),
+					Message:               fmt.Sprintf("Instance idle for %d days (avg CPU %.1f%%, %.1f total IOPS)", cfg.MetricDays, metrics.AvgCPU, totalIOPS),
 					EstimatedMonthlyWaste: monthlyCost,
+					Confidence:            confidence,
+					Countersignals:        countersignals,
 					Metadata: map[string]any{
 						"avg_cpu":        metrics.AvgCPU,
 						"total_conns":    metrics.TotalConns,
+						"total_iops":     totalIOPS,
+						"read_iops":      metrics.AvgReadIOPS,
+						"write_iops":     metrics.AvgWriteIOPS,
 						"metric_days":    cfg.MetricDays,
 						"instance_class": inst.Class,
 						"engine":         inst.Engine,
