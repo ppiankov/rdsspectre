@@ -124,7 +124,7 @@ func TestFetchInstanceMetricsMaxCPU(t *testing.T) {
 }
 
 // WO-17@v2: a flat swap profile is parked-page noise and must report zero growth.
-// This is the exact live-account shape (media-view-prod, 8.38MB flat over 14d)
+// This is the exact live-account shape (a write-heavy instance, 8.38MB flat over 14d)
 // that WO-16 wrongly read as memory pressure.
 func TestFetchInstanceMetricsFlatSwapIsNotGrowth(t *testing.T) {
 	cw := newMockCWClient()
@@ -158,7 +158,7 @@ func TestFetchInstanceMetricsDecliningSwap(t *testing.T) {
 }
 
 // WO-17@v2: genuinely growing swap reports the positive delta (live-account shape
-// of saga-service-prod: 0.5MB -> 6.24MB).
+// of a memory-pressured instance: 0.5MB -> 6.24MB).
 func TestFetchInstanceMetricsGrowingSwap(t *testing.T) {
 	cw := newMockCWClient()
 	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)

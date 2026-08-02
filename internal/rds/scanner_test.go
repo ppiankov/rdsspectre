@@ -272,11 +272,11 @@ func TestScanIdleInstanceZeroConnsIsConfident(t *testing.T) {
 }
 
 // WO-18: a pooled-connection instance with near-zero IOPS is flagged idle.
-// Live-account shape of loyalty-prod: ~1.8 total IOPS with 6.7 pooled connections.
+// Shape observed on a real account: ~1.8 total IOPS with ~7 pooled connections.
 func TestScanIdleInstancePooledButDead(t *testing.T) {
 	mock := newMockRDSClient()
 	mock.instances = []rdstypes.DBInstance{
-		makeInstance("loyalty-prod", "db.t4g.small", "postgres", "14.19"),
+		makeInstance("dead-app-db", "db.t4g.small", "postgres", "13.4"),
 	}
 	cw := newMockCWClient()
 	cw.metrics["CPUUtilization"] = makeCPUDatapoints(2.0, 4.0, 14)
@@ -421,7 +421,7 @@ func TestScanOversizedGrowingSwapNeedsReview(t *testing.T) {
 }
 
 // WO-17@v2: sustained write IOPS downgrades confidence (live-account shape of
-// media-view-prod: 14.6% max CPU but 138.88 avg write IOPS).
+// a write-heavy instance: 14.6% max CPU but 138.88 avg write IOPS).
 func TestScanOversizedHighWriteIOPSNeedsReview(t *testing.T) {
 	mock := newMockRDSClient()
 	mock.instances = []rdstypes.DBInstance{

@@ -28,8 +28,8 @@ const (
 // WO-18: idleIOPSThreshold is the total average IOPS (read + write) below which
 // an instance is treated as effectively idle even when connection pools hold
 // connections open. Calibrated from live data: a genuinely dead instance
-// (loyalty-prod) averages ~1.8 IOPS; the lowest-activity live instance
-// (marketplace-prod) averages ~4.0 IOPS. 5.0 sits between those two clusters.
+// (a dead-app instance) averages ~1.8 IOPS; the lowest-activity live instance
+// (a low-traffic instance) averages ~4.0 IOPS. 5.0 sits between those two clusters.
 const idleIOPSThreshold = 5.0
 
 // WO-17@v2: gradeOversized converts corroborating metrics into a confidence grade
@@ -240,7 +240,7 @@ func (s *RDSScanner) analyzeInstance(ctx context.Context, cfg database.ScanConfi
 			// WO-18: idle check — low CPU AND (zero connections OR near-zero IOPS).
 			// Connection pools hold connections open on dead apps, so TotalConns==0
 			// alone misses them. Total IOPS below the threshold catches a pooled
-			// but effectively dead instance (e.g. loyalty-prod: 1.8 IOPS, 6.7 conns).
+			// but effectively dead instance (e.g. a dead-app instance: 1.8 IOPS, 6.7 conns).
 			if metrics.AvgCPU < cfg.IdleCPU && (metrics.TotalConns == 0 || totalIOPS < idleIOPSThreshold) {
 				// WO-18: a zero-connection idle is confident; a pooled-connection
 				// idle is graded needs-review because a warm pool does not prove
