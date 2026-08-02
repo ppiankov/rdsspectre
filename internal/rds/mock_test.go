@@ -164,3 +164,13 @@ func makeConnDatapoints(totalConns float64) *cloudwatch.GetMetricStatisticsOutpu
 		},
 	}
 }
+
+// WO-16: swap-usage datapoints for the oversized-instance memory-pressure countersignal.
+func makeSwapDatapoints(maxBytes float64) *cloudwatch.GetMetricStatisticsOutput {
+	mx := maxBytes
+	return &cloudwatch.GetMetricStatisticsOutput{
+		Datapoints: []cwtypes.Datapoint{
+			{Maximum: &mx},
+		},
+	}
+}

@@ -122,3 +122,50 @@ func TestFetchInstanceMetricsMaxCPU(t *testing.T) {
 		t.Errorf("AvgCPU = %.1f, want ~%.1f", stats.AvgCPU, expectedAvg)
 	}
 }
+
+// WO-16: no SwapUsage datapoints (or all zero) means SwapUsed is false.
+func TestFetchInstanceMetricsNoSwap(t *testing.T) {
+	cw := newMockCWClient()
+	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)
+	cw.metrics["DatabaseConnections"] = makeConnDatapoints(50)
+	cw.metrics["SwapUsage"] = makeSwapDatapoints(0)
+
+	stats, err := FetchInstanceMetrics(context.Background(), cw, "mydb", now, 14)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if stats.SwapUsed {
+		t.Error("SwapUsed = true, want false when swap datapoints are all zero")
+	}
+}
+
+// WO-16: any measurable swap datapoint sets SwapUsed.
+func TestFetchInstanceMetricsSwapDetected(t *testing.T) {
+	cw := newMockCWClient()
+	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)
+	cw.metrics["DatabaseConnections"] = makeConnDatapoints(50)
+	cw.metrics["SwapUsage"] = makeSwapDatapoints(2048)
+
+	stats, err := FetchInstanceMetrics(context.Background(), cw, "mydb", now, 14)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if !stats.SwapUsed {
+		t.Error("SwapUsed = false, want true when a nonzero swap datapoint is present")
+	}
+}
+
+// WO-16: absent SwapUsage metric (no datapoints at all) defaults to false, unchanged behavior.
+func TestFetchInstanceMetricsNoSwapMetric(t *testing.T) {
+	cw := newMockCWClient()
+	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)
+	cw.metrics["DatabaseConnections"] = makeConnDatapoints(50)
+
+	stats, err := FetchInstanceMetrics(context.Background(), cw, "mydb", now, 14)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if stats.SwapUsed {
+		t.Error("SwapUsed = true, want false when no SwapUsage metric is returned at all")
+	}
+}
