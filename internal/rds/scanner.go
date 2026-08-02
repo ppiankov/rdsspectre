@@ -236,8 +236,8 @@ func (s *RDSScanner) analyzeInstance(ctx context.Context, cfg database.ScanConfi
 	if s.cw != nil && cfg.MetricDays > 0 {
 		metrics, err := FetchInstanceMetrics(ctx, s.cw, inst.ID, s.now, cfg.MetricDays)
 		if err == nil && metrics.HasData {
-			totalIOPS := metrics.AvgReadIOPS + metrics.AvgWriteIOPS
 			// WO-18: idle check — low CPU AND (zero connections OR near-zero IOPS).
+			totalIOPS := metrics.AvgReadIOPS + metrics.AvgWriteIOPS
 			// Connection pools hold connections open on dead apps, so TotalConns==0
 			// alone misses them. Total IOPS below the threshold catches a pooled
 			// but effectively dead instance (e.g. a dead-app instance: 1.8 IOPS, 6.7 conns).
