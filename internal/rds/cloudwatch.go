@@ -18,12 +18,12 @@ type MetricStats struct {
 	TotalConns     float64
 	HasData        bool
 	DatapointCount int
-	// WO-17: SwapGrowthBytes is the change in swap between the earliest and
+	// WO-17@v2: SwapGrowthBytes is the change in swap between the earliest and
 	// latest datapoint in the window. Growth indicates memory pressure; a flat
 	// or declining value is parked-page noise (Linux commonly parks a few MB
 	// at boot and never touches it again), which WO-16 wrongly read as pressure.
 	SwapGrowthBytes float64
-	// WO-17: AvgWriteIOPS is average write IOPS over the window. Sustained
+	// WO-17@v2: AvgWriteIOPS is average write IOPS over the window. Sustained
 	// write I/O is a countersignal against downsizing even when CPU is low,
 	// because burstable instance classes scale EBS bandwidth with size.
 	AvgWriteIOPS float64
@@ -86,7 +86,7 @@ func FetchInstanceMetrics(ctx context.Context, cw CloudWatchAPI, instanceID stri
 		return nil, err
 	}
 
-	// WO-17: fetch swap usage to measure GROWTH across the window as a
+	// WO-17@v2: fetch swap usage to measure GROWTH across the window as a
 	// memory-pressure countersignal for the oversized-instance check.
 	swapOut, err := cw.GetMetricStatistics(ctx, &cloudwatch.GetMetricStatisticsInput{
 		Namespace:  aws.String("AWS/RDS"),
@@ -103,7 +103,7 @@ func FetchInstanceMetrics(ctx context.Context, cw CloudWatchAPI, instanceID stri
 		return nil, err
 	}
 
-	// WO-17: fetch write IOPS as an I/O-bound countersignal; a low-CPU instance
+	// WO-17@v2: fetch write IOPS as an I/O-bound countersignal; a low-CPU instance
 	// sustaining heavy writes is not necessarily safe to downsize.
 	writeOut, err := cw.GetMetricStatistics(ctx, &cloudwatch.GetMetricStatisticsInput{
 		Namespace:  aws.String("AWS/RDS"),
@@ -144,11 +144,11 @@ func FetchInstanceMetrics(ctx context.Context, cw CloudWatchAPI, instanceID stri
 		}
 	}
 
-	// WO-17: swap GROWTH, not presence. CloudWatch does not guarantee datapoint
+	// WO-17@v2: swap GROWTH, not presence. CloudWatch does not guarantee datapoint
 	// ordering, so sort by timestamp before taking the first/last delta.
 	stats.SwapGrowthBytes = swapGrowth(swapOut.Datapoints)
 
-	// WO-17: average write IOPS across the window.
+	// WO-17@v2: average write IOPS across the window.
 	var writeSum float64
 	var writeCount int
 	for _, dp := range writeOut.Datapoints {
@@ -164,7 +164,7 @@ func FetchInstanceMetrics(ctx context.Context, cw CloudWatchAPI, instanceID stri
 	return stats, nil
 }
 
-// WO-17: swapGrowth returns the change in swap between the chronologically
+// WO-17@v2: swapGrowth returns the change in swap between the chronologically
 // earliest and latest datapoint. Positive means swap grew (memory pressure);
 // zero or negative means flat or reclaimed, which is parked-page noise.
 func swapGrowth(datapoints []cwtypes.Datapoint) float64 {

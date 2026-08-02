@@ -267,7 +267,7 @@ func TestScanOversizedInstance(t *testing.T) {
 	}
 }
 
-// WO-17: flat swap is parked-page noise — the finding is emitted AND confident.
+// WO-17@v2: flat swap is parked-page noise — the finding is emitted AND confident.
 // Regression guard for the WO-16 defect that hid $242.42/mo of real signal.
 func TestScanOversizedFlatSwapIsConfident(t *testing.T) {
 	mock := newMockRDSClient()
@@ -294,7 +294,7 @@ func TestScanOversizedFlatSwapIsConfident(t *testing.T) {
 	}
 }
 
-// WO-17: declining swap is also not pressure.
+// WO-17@v2: declining swap is also not pressure.
 func TestScanOversizedDecliningSwapIsConfident(t *testing.T) {
 	mock := newMockRDSClient()
 	mock.instances = []rdstypes.DBInstance{
@@ -317,7 +317,7 @@ func TestScanOversizedDecliningSwapIsConfident(t *testing.T) {
 	}
 }
 
-// WO-17: growing swap downgrades confidence but does NOT remove the finding.
+// WO-17@v2: growing swap downgrades confidence but does NOT remove the finding.
 func TestScanOversizedGrowingSwapNeedsReview(t *testing.T) {
 	mock := newMockRDSClient()
 	mock.instances = []rdstypes.DBInstance{
@@ -346,7 +346,7 @@ func TestScanOversizedGrowingSwapNeedsReview(t *testing.T) {
 	}
 }
 
-// WO-17: sustained write IOPS downgrades confidence (live-account shape of
+// WO-17@v2: sustained write IOPS downgrades confidence (live-account shape of
 // media-view-prod: 14.6% max CPU but 138.88 avg write IOPS).
 func TestScanOversizedHighWriteIOPSNeedsReview(t *testing.T) {
 	mock := newMockRDSClient()
@@ -373,7 +373,7 @@ func TestScanOversizedHighWriteIOPSNeedsReview(t *testing.T) {
 	}
 }
 
-// WO-17: both countersignals present are both reported on the one finding.
+// WO-17@v2: both countersignals present are both reported on the one finding.
 func TestScanOversizedBothCountersignals(t *testing.T) {
 	mock := newMockRDSClient()
 	mock.instances = []rdstypes.DBInstance{

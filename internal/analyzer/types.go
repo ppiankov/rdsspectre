@@ -3,12 +3,13 @@ package analyzer
 import "github.com/ppiankov/rdsspectre/internal/database"
 
 // Summary holds aggregated scan statistics.
+// WO-17@v2: carries the confidence-split waste totals added below.
 type Summary struct {
 	TotalFindings     int     `json:"total_findings"`
 	InstancesScanned  int     `json:"instances_scanned"`
 	ResourcesScanned  int     `json:"resources_scanned"`
 	TotalMonthlyWaste float64 `json:"total_monthly_waste"`
-	// WO-17: split of TotalMonthlyWaste by finding confidence, so an operator
+	// WO-17@v2: split of TotalMonthlyWaste by finding confidence, so an operator
 	// sees at a glance how much of the headline number is actionable without
 	// reading every finding. The two always sum to TotalMonthlyWaste.
 	ConfidentMonthlyWaste   float64            `json:"confident_monthly_waste"`

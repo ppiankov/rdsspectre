@@ -11,7 +11,7 @@ import (
 	"github.com/ppiankov/rdsspectre/internal/pricing"
 )
 
-// WO-17: countersignal thresholds for grading OVERSIZED_INSTANCE. Both are
+// WO-17@v2: countersignal thresholds for grading OVERSIZED_INSTANCE. Both are
 // deliberately instance-class-independent so no per-class memory or bandwidth
 // lookup table is required.
 const (
@@ -25,7 +25,7 @@ const (
 	writeIOPSBusyThreshold = 50.0
 )
 
-// WO-17: gradeOversized converts corroborating metrics into a confidence grade
+// WO-17@v2: gradeOversized converts corroborating metrics into a confidence grade
 // plus human-readable countersignals. It never decides whether to emit — that
 // is the caller's job — it only reports how much the evidence agrees.
 func gradeOversized(metrics *MetricStats, metricDays int) (database.Confidence, []string) {
@@ -247,7 +247,7 @@ func (s *RDSScanner) analyzeInstance(ctx context.Context, cfg database.ScanConfi
 						"engine":         inst.Engine,
 					},
 				})
-				// WO-17: oversized findings are GRADED, never suppressed. Low CPU
+				// WO-17@v2: oversized findings are GRADED, never suppressed. Low CPU
 				// with live connections always emits; countersignals that
 				// contradict it downgrade confidence and are reported, because
 				// hiding the disagreement hides what the operator needs to decide.

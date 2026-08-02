@@ -22,11 +22,12 @@ const (
 )
 
 // Confidence grades how much corroborating evidence backs a cost finding.
-// WO-17: cost findings are graded, never suppressed — a countersignal that
+// WO-17@v2: cost findings are graded, never suppressed — a countersignal that
 // contradicts the primary signal is information the operator needs, so it
 // downgrades confidence and is reported rather than hiding the finding.
 type Confidence string
 
+// WO-17@v2: the two grades a cost finding can carry.
 const (
 	// ConfidenceConfident means no countersignal contradicted the primary signal.
 	ConfidenceConfident Confidence = "confident"
@@ -63,7 +64,7 @@ type Finding struct {
 	Message               string         `json:"message"`
 	EstimatedMonthlyWaste float64        `json:"estimated_monthly_waste"`
 	Metadata              map[string]any `json:"metadata,omitempty"`
-	// WO-17: grading fields. Both omitempty so existing spectre/v1 consumers
+	// WO-17@v2: grading fields. Both omitempty so existing spectre/v1 consumers
 	// that predate grading keep parsing unchanged.
 	Confidence Confidence `json:"confidence,omitempty"`
 	// Countersignals are human-readable reasons confidence was downgraded,

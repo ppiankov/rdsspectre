@@ -85,7 +85,7 @@ func TestAnalyzePreservesErrors(t *testing.T) {
 	}
 }
 
-// WO-17: waste is split by confidence and the split always sums to the total.
+// WO-17@v2: waste is split by confidence and the split always sums to the total.
 func TestAnalyzeSplitsWasteByConfidence(t *testing.T) {
 	result := &database.ScanResult{
 		Findings: []database.Finding{
@@ -107,7 +107,7 @@ func TestAnalyzeSplitsWasteByConfidence(t *testing.T) {
 	}
 }
 
-// WO-17: findings predating grading carry no confidence and count as confident,
+// WO-17@v2: findings predating grading carry no confidence and count as confident,
 // so the summary is unchanged for consumers that never set the field.
 func TestAnalyzeUngradedFindingsCountAsConfident(t *testing.T) {
 	result := &database.ScanResult{

@@ -54,7 +54,7 @@ func (r *TextReporter) Generate(data Data) error {
 
 	r.printf(w, "SEVERITY\tTYPE\tRESOURCE\tREGION\tWASTE/MO\tMESSAGE\n")
 	for _, f := range sorted {
-		// WO-17: append countersignals to the message so the reason a finding
+		// WO-17@v2: append countersignals to the message so the reason a finding
 		// is graded needs-review travels with the finding itself.
 		msg := f.Message
 		if len(f.Countersignals) > 0 {
@@ -78,7 +78,7 @@ func writeTextSummary(w io.Writer, data Data) {
 	_, _ = fmt.Fprintf(w, "  Instances scanned: %d\n", data.Summary.InstancesScanned)
 	_, _ = fmt.Fprintf(w, "  Resources scanned: %d\n", data.Summary.ResourcesScanned)
 	_, _ = fmt.Fprintf(w, "  Total findings:    %d\n", data.Summary.TotalFindings)
-	// WO-17: lead with the actionable split so the budget question is answerable
+	// WO-17@v2: lead with the actionable split so the budget question is answerable
 	// at a glance without reading the finding table.
 	_, _ = fmt.Fprintf(w, "  Monthly waste:     $%.2f (confident $%.2f, needs review $%.2f)\n",
 		data.Summary.TotalMonthlyWaste,
