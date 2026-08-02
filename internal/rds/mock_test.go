@@ -165,12 +165,34 @@ func makeConnDatapoints(totalConns float64) *cloudwatch.GetMetricStatisticsOutpu
 	}
 }
 
-// WO-16: swap-usage datapoints for the oversized-instance memory-pressure countersignal.
-func makeSwapDatapoints(maxBytes float64) *cloudwatch.GetMetricStatisticsOutput {
-	mx := maxBytes
-	return &cloudwatch.GetMetricStatisticsOutput{
-		Datapoints: []cwtypes.Datapoint{
-			{Maximum: &mx},
-		},
+// WO-17@v2: swap series in chronological order, one datapoint per day starting
+// 14 days before `now`, for measuring swap GROWTH across the window.
+func makeSwapSeries(bytesPerDay ...float64) *cloudwatch.GetMetricStatisticsOutput {
+	dps := make([]cwtypes.Datapoint, len(bytesPerDay))
+	for i, v := range bytesPerDay {
+		val := v
+		ts := now.AddDate(0, 0, -len(bytesPerDay)+i)
+		dps[i] = cwtypes.Datapoint{Maximum: &val, Timestamp: &ts}
 	}
+	return &cloudwatch.GetMetricStatisticsOutput{Datapoints: dps}
+}
+
+// WO-17@v2: a flat swap series at the given level — the parked-page baseline that
+// WO-16 wrongly treated as memory pressure.
+func makeFlatSwapSeries(bytes float64, days int) *cloudwatch.GetMetricStatisticsOutput {
+	vals := make([]float64, days)
+	for i := range vals {
+		vals[i] = bytes
+	}
+	return makeSwapSeries(vals...)
+}
+
+// WO-17@v2: average write IOPS datapoints for the I/O-bound countersignal.
+func makeWriteIOPSDatapoints(avg float64, count int) *cloudwatch.GetMetricStatisticsOutput {
+	dps := make([]cwtypes.Datapoint, count)
+	for i := range dps {
+		v := avg
+		dps[i] = cwtypes.Datapoint{Average: &v}
+	}
+	return &cloudwatch.GetMetricStatisticsOutput{Datapoints: dps}
 }

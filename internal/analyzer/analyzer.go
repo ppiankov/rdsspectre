@@ -23,6 +23,13 @@ func Analyze(result *database.ScanResult, cfg AnalyzerConfig) AnalysisResult {
 
 	for _, f := range filtered {
 		summary.TotalMonthlyWaste += f.EstimatedMonthlyWaste
+		// WO-17@v2: split waste by confidence. Findings predating grading carry no
+		// confidence value and count as confident, preserving prior behavior.
+		if f.Confidence == database.ConfidenceNeedsReview {
+			summary.NeedsReviewMonthlyWaste += f.EstimatedMonthlyWaste
+		} else {
+			summary.ConfidentMonthlyWaste += f.EstimatedMonthlyWaste
+		}
 		summary.BySeverity[string(f.Severity)]++
 		summary.ByFindingType[string(f.ID)]++
 		summary.ByRegion[f.Region]++

@@ -123,39 +123,84 @@ func TestFetchInstanceMetricsMaxCPU(t *testing.T) {
 	}
 }
 
-// WO-16: no SwapUsage datapoints (or all zero) means SwapUsed is false.
-func TestFetchInstanceMetricsNoSwap(t *testing.T) {
+// WO-17@v2: a flat swap profile is parked-page noise and must report zero growth.
+// This is the exact live-account shape (media-view-prod, 8.38MB flat over 14d)
+// that WO-16 wrongly read as memory pressure.
+func TestFetchInstanceMetricsFlatSwapIsNotGrowth(t *testing.T) {
 	cw := newMockCWClient()
 	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)
 	cw.metrics["DatabaseConnections"] = makeConnDatapoints(50)
-	cw.metrics["SwapUsage"] = makeSwapDatapoints(0)
+	cw.metrics["SwapUsage"] = makeFlatSwapSeries(8781824, 14)
 
 	stats, err := FetchInstanceMetrics(context.Background(), cw, "mydb", now, 14)
 	if err != nil {
 		t.Fatalf("error: %v", err)
 	}
-	if stats.SwapUsed {
-		t.Error("SwapUsed = true, want false when swap datapoints are all zero")
+	if stats.SwapGrowthBytes != 0 {
+		t.Errorf("SwapGrowthBytes = %.0f, want 0 for a flat swap profile", stats.SwapGrowthBytes)
 	}
 }
 
-// WO-16: any measurable swap datapoint sets SwapUsed.
-func TestFetchInstanceMetricsSwapDetected(t *testing.T) {
+// WO-17@v2: reclaimed swap reports negative growth, never treated as pressure.
+func TestFetchInstanceMetricsDecliningSwap(t *testing.T) {
 	cw := newMockCWClient()
 	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)
 	cw.metrics["DatabaseConnections"] = makeConnDatapoints(50)
-	cw.metrics["SwapUsage"] = makeSwapDatapoints(2048)
+	cw.metrics["SwapUsage"] = makeSwapSeries(22851584, 21000000, 20594688)
 
 	stats, err := FetchInstanceMetrics(context.Background(), cw, "mydb", now, 14)
 	if err != nil {
 		t.Fatalf("error: %v", err)
 	}
-	if !stats.SwapUsed {
-		t.Error("SwapUsed = false, want true when a nonzero swap datapoint is present")
+	if stats.SwapGrowthBytes >= 0 {
+		t.Errorf("SwapGrowthBytes = %.0f, want negative for a declining swap profile", stats.SwapGrowthBytes)
 	}
 }
 
-// WO-16: absent SwapUsage metric (no datapoints at all) defaults to false, unchanged behavior.
+// WO-17@v2: genuinely growing swap reports the positive delta (live-account shape
+// of saga-service-prod: 0.5MB -> 6.24MB).
+func TestFetchInstanceMetricsGrowingSwap(t *testing.T) {
+	cw := newMockCWClient()
+	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)
+	cw.metrics["DatabaseConnections"] = makeConnDatapoints(50)
+	cw.metrics["SwapUsage"] = makeSwapSeries(524288, 2621440, 6545408)
+
+	stats, err := FetchInstanceMetrics(context.Background(), cw, "mydb", now, 14)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	want := 6545408.0 - 524288.0
+	if stats.SwapGrowthBytes != want {
+		t.Errorf("SwapGrowthBytes = %.0f, want %.0f", stats.SwapGrowthBytes, want)
+	}
+}
+
+// WO-17@v2: CloudWatch does not guarantee datapoint ordering, so growth must be
+// computed after sorting by timestamp, not by slice position.
+func TestFetchInstanceMetricsSwapGrowthUnordered(t *testing.T) {
+	ordered := makeSwapSeries(524288, 2621440, 6545408)
+	// Reverse the slice: chronologically identical, positionally backwards.
+	dps := ordered.Datapoints
+	for i, j := 0, len(dps)-1; i < j; i, j = i+1, j-1 {
+		dps[i], dps[j] = dps[j], dps[i]
+	}
+
+	cw := newMockCWClient()
+	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)
+	cw.metrics["DatabaseConnections"] = makeConnDatapoints(50)
+	cw.metrics["SwapUsage"] = ordered
+
+	stats, err := FetchInstanceMetrics(context.Background(), cw, "mydb", now, 14)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	want := 6545408.0 - 524288.0
+	if stats.SwapGrowthBytes != want {
+		t.Errorf("SwapGrowthBytes = %.0f, want %.0f (datapoints must be sorted by timestamp)", stats.SwapGrowthBytes, want)
+	}
+}
+
+// WO-17@v2: an absent SwapUsage metric reports zero growth, not pressure.
 func TestFetchInstanceMetricsNoSwapMetric(t *testing.T) {
 	cw := newMockCWClient()
 	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)
@@ -165,7 +210,23 @@ func TestFetchInstanceMetricsNoSwapMetric(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error: %v", err)
 	}
-	if stats.SwapUsed {
-		t.Error("SwapUsed = true, want false when no SwapUsage metric is returned at all")
+	if stats.SwapGrowthBytes != 0 {
+		t.Errorf("SwapGrowthBytes = %.0f, want 0 when no SwapUsage metric is returned", stats.SwapGrowthBytes)
+	}
+}
+
+// WO-17@v2: average write IOPS is surfaced for the I/O-bound countersignal.
+func TestFetchInstanceMetricsWriteIOPS(t *testing.T) {
+	cw := newMockCWClient()
+	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)
+	cw.metrics["DatabaseConnections"] = makeConnDatapoints(50)
+	cw.metrics["WriteIOPS"] = makeWriteIOPSDatapoints(138.88, 14)
+
+	stats, err := FetchInstanceMetrics(context.Background(), cw, "mydb", now, 14)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if stats.AvgWriteIOPS < 138.0 || stats.AvgWriteIOPS > 139.0 {
+		t.Errorf("AvgWriteIOPS = %.2f, want ~138.88", stats.AvgWriteIOPS)
 	}
 }
