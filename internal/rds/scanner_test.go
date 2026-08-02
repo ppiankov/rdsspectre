@@ -3,6 +3,7 @@ package rds
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -266,8 +267,9 @@ func TestScanOversizedInstance(t *testing.T) {
 	}
 }
 
-// WO-16: low CPU alone still flags oversized when no swap activity was measured.
-func TestScanOversizedInstanceNoSwap(t *testing.T) {
+// WO-17: flat swap is parked-page noise — the finding is emitted AND confident.
+// Regression guard for the WO-16 defect that hid $242.42/mo of real signal.
+func TestScanOversizedFlatSwapIsConfident(t *testing.T) {
 	mock := newMockRDSClient()
 	mock.instances = []rdstypes.DBInstance{
 		makeInstance("big-db", "db.r5.xlarge", "postgres", "17.2"),
@@ -275,20 +277,48 @@ func TestScanOversizedInstanceNoSwap(t *testing.T) {
 	cw := newMockCWClient()
 	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)
 	cw.metrics["DatabaseConnections"] = makeConnDatapoints(50)
-	cw.metrics["SwapUsage"] = makeSwapDatapoints(0)
+	cw.metrics["SwapUsage"] = makeFlatSwapSeries(8781824, 14)
 
 	s := newTestScanner(mock, cw)
 	result := s.Scan(context.Background(), defaultCfg(), nil)
 
 	findings := findByID(result.Findings, database.FindingOversizedInstance)
 	if len(findings) != 1 {
-		t.Fatalf("expected 1 OVERSIZED_INSTANCE with zero swap, got %d", len(findings))
+		t.Fatalf("expected 1 OVERSIZED_INSTANCE with flat swap, got %d", len(findings))
+	}
+	if findings[0].Confidence != database.ConfidenceConfident {
+		t.Errorf("Confidence = %q, want %q", findings[0].Confidence, database.ConfidenceConfident)
+	}
+	if len(findings[0].Countersignals) != 0 {
+		t.Errorf("Countersignals = %v, want none", findings[0].Countersignals)
 	}
 }
 
-// WO-16: measurable swap usage suppresses OVERSIZED_INSTANCE even with low CPU,
-// since it signals memory pressure the CPU metric alone can't see.
-func TestScanOversizedInstanceSuppressedBySwap(t *testing.T) {
+// WO-17: declining swap is also not pressure.
+func TestScanOversizedDecliningSwapIsConfident(t *testing.T) {
+	mock := newMockRDSClient()
+	mock.instances = []rdstypes.DBInstance{
+		makeInstance("shrinking-db", "db.r5.xlarge", "postgres", "17.2"),
+	}
+	cw := newMockCWClient()
+	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)
+	cw.metrics["DatabaseConnections"] = makeConnDatapoints(50)
+	cw.metrics["SwapUsage"] = makeSwapSeries(22851584, 21000000, 20594688)
+
+	s := newTestScanner(mock, cw)
+	result := s.Scan(context.Background(), defaultCfg(), nil)
+
+	findings := findByID(result.Findings, database.FindingOversizedInstance)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 OVERSIZED_INSTANCE with declining swap, got %d", len(findings))
+	}
+	if findings[0].Confidence != database.ConfidenceConfident {
+		t.Errorf("Confidence = %q, want %q", findings[0].Confidence, database.ConfidenceConfident)
+	}
+}
+
+// WO-17: growing swap downgrades confidence but does NOT remove the finding.
+func TestScanOversizedGrowingSwapNeedsReview(t *testing.T) {
 	mock := newMockRDSClient()
 	mock.instances = []rdstypes.DBInstance{
 		makeInstance("swapping-db", "db.r5.xlarge", "postgres", "17.2"),
@@ -296,14 +326,74 @@ func TestScanOversizedInstanceSuppressedBySwap(t *testing.T) {
 	cw := newMockCWClient()
 	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)
 	cw.metrics["DatabaseConnections"] = makeConnDatapoints(50)
-	cw.metrics["SwapUsage"] = makeSwapDatapoints(1048576) // 1 MiB of swap observed
+	cw.metrics["SwapUsage"] = makeSwapSeries(524288, 3000000, 6545408)
 
 	s := newTestScanner(mock, cw)
 	result := s.Scan(context.Background(), defaultCfg(), nil)
 
 	findings := findByID(result.Findings, database.FindingOversizedInstance)
-	if len(findings) != 0 {
-		t.Fatalf("expected 0 OVERSIZED_INSTANCE when swap was used, got %d", len(findings))
+	if len(findings) != 1 {
+		t.Fatalf("expected the finding to still be emitted when swap grows, got %d", len(findings))
+	}
+	if findings[0].Confidence != database.ConfidenceNeedsReview {
+		t.Errorf("Confidence = %q, want %q", findings[0].Confidence, database.ConfidenceNeedsReview)
+	}
+	if len(findings[0].Countersignals) != 1 {
+		t.Fatalf("expected 1 countersignal, got %v", findings[0].Countersignals)
+	}
+	if !strings.Contains(findings[0].Countersignals[0], "swap grew") {
+		t.Errorf("countersignal = %q, want it to name the swap growth", findings[0].Countersignals[0])
+	}
+}
+
+// WO-17: sustained write IOPS downgrades confidence (live-account shape of
+// media-view-prod: 14.6% max CPU but 138.88 avg write IOPS).
+func TestScanOversizedHighWriteIOPSNeedsReview(t *testing.T) {
+	mock := newMockRDSClient()
+	mock.instances = []rdstypes.DBInstance{
+		makeInstance("write-heavy-db", "db.r5.xlarge", "postgres", "17.2"),
+	}
+	cw := newMockCWClient()
+	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)
+	cw.metrics["DatabaseConnections"] = makeConnDatapoints(50)
+	cw.metrics["WriteIOPS"] = makeWriteIOPSDatapoints(138.88, 14)
+
+	s := newTestScanner(mock, cw)
+	result := s.Scan(context.Background(), defaultCfg(), nil)
+
+	findings := findByID(result.Findings, database.FindingOversizedInstance)
+	if len(findings) != 1 {
+		t.Fatalf("expected the finding to still be emitted when write IOPS are high, got %d", len(findings))
+	}
+	if findings[0].Confidence != database.ConfidenceNeedsReview {
+		t.Errorf("Confidence = %q, want %q", findings[0].Confidence, database.ConfidenceNeedsReview)
+	}
+	if !strings.Contains(findings[0].Countersignals[0], "write IOPS") {
+		t.Errorf("countersignal = %q, want it to name the write IOPS", findings[0].Countersignals[0])
+	}
+}
+
+// WO-17: both countersignals present are both reported on the one finding.
+func TestScanOversizedBothCountersignals(t *testing.T) {
+	mock := newMockRDSClient()
+	mock.instances = []rdstypes.DBInstance{
+		makeInstance("busy-db", "db.r5.xlarge", "postgres", "17.2"),
+	}
+	cw := newMockCWClient()
+	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)
+	cw.metrics["DatabaseConnections"] = makeConnDatapoints(50)
+	cw.metrics["SwapUsage"] = makeSwapSeries(524288, 3000000, 6545408)
+	cw.metrics["WriteIOPS"] = makeWriteIOPSDatapoints(138.88, 14)
+
+	s := newTestScanner(mock, cw)
+	result := s.Scan(context.Background(), defaultCfg(), nil)
+
+	findings := findByID(result.Findings, database.FindingOversizedInstance)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 OVERSIZED_INSTANCE, got %d", len(findings))
+	}
+	if len(findings[0].Countersignals) != 2 {
+		t.Errorf("expected 2 countersignals, got %v", findings[0].Countersignals)
 	}
 }
 

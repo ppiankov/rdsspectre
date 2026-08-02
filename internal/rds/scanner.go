@@ -11,6 +11,40 @@ import (
 	"github.com/ppiankov/rdsspectre/internal/pricing"
 )
 
+// WO-17: countersignal thresholds for grading OVERSIZED_INSTANCE. Both are
+// deliberately instance-class-independent so no per-class memory or bandwidth
+// lookup table is required.
+const (
+	// swapGrowthPressureBytes is the swap growth over the metric window above
+	// which an instance is treated as memory-pressured. Sized above the few-MB
+	// baseline Linux parks at boot, which WO-16 wrongly read as pressure.
+	swapGrowthPressureBytes = 4 * 1024 * 1024
+	// writeIOPSBusyThreshold is the average write IOPS above which an instance
+	// is treated as I/O-bound; burstable classes scale EBS bandwidth with size,
+	// so a write-heavy instance may not survive a downsize even at low CPU.
+	writeIOPSBusyThreshold = 50.0
+)
+
+// WO-17: gradeOversized converts corroborating metrics into a confidence grade
+// plus human-readable countersignals. It never decides whether to emit — that
+// is the caller's job — it only reports how much the evidence agrees.
+func gradeOversized(metrics *MetricStats, metricDays int) (database.Confidence, []string) {
+	var countersignals []string
+	if metrics.SwapGrowthBytes > swapGrowthPressureBytes {
+		countersignals = append(countersignals, fmt.Sprintf(
+			"swap grew %.1fMB over %dd (memory pressure)",
+			metrics.SwapGrowthBytes/(1024*1024), metricDays))
+	}
+	if metrics.AvgWriteIOPS > writeIOPSBusyThreshold {
+		countersignals = append(countersignals, fmt.Sprintf(
+			"%.1f avg write IOPS (I/O-bound)", metrics.AvgWriteIOPS))
+	}
+	if len(countersignals) > 0 {
+		return database.ConfidenceNeedsReview, countersignals
+	}
+	return database.ConfidenceConfident, nil
+}
+
 // RDSScanner audits AWS RDS instances for waste and security issues.
 type RDSScanner struct {
 	client RDSAPI
@@ -213,11 +247,12 @@ func (s *RDSScanner) analyzeInstance(ctx context.Context, cfg database.ScanConfi
 						"engine":         inst.Engine,
 					},
 				})
-				// WO-16: oversized check requires max CPU < threshold AND no
-				// measurable swap activity — swap usage means the instance is
-				// memory-bound despite low CPU, so downsizing on CPU alone
-				// would be unsafe regardless of instance class.
-			} else if metrics.MaxCPU < cfg.CPUThreshold && metrics.TotalConns > 0 && !metrics.SwapUsed {
+				// WO-17: oversized findings are GRADED, never suppressed. Low CPU
+				// with live connections always emits; countersignals that
+				// contradict it downgrade confidence and are reported, because
+				// hiding the disagreement hides what the operator needs to decide.
+			} else if metrics.MaxCPU < cfg.CPUThreshold && metrics.TotalConns > 0 {
+				confidence, countersignals := gradeOversized(metrics, cfg.MetricDays)
 				findings = append(findings, database.Finding{
 					ID:                    database.FindingOversizedInstance,
 					Severity:              database.SeverityHigh,
@@ -226,13 +261,17 @@ func (s *RDSScanner) analyzeInstance(ctx context.Context, cfg database.ScanConfi
 					Region:                s.region,
 					Message:               fmt.Sprintf("Instance oversized (max CPU %.1f%% over %d days)", metrics.MaxCPU, cfg.MetricDays),
 					EstimatedMonthlyWaste: monthlyCost * 0.5,
+					Confidence:            confidence,
+					Countersignals:        countersignals,
 					Metadata: map[string]any{
-						"max_cpu":        metrics.MaxCPU,
-						"avg_cpu":        metrics.AvgCPU,
-						"total_conns":    metrics.TotalConns,
-						"metric_days":    cfg.MetricDays,
-						"instance_class": inst.Class,
-						"engine":         inst.Engine,
+						"max_cpu":           metrics.MaxCPU,
+						"avg_cpu":           metrics.AvgCPU,
+						"total_conns":       metrics.TotalConns,
+						"metric_days":       cfg.MetricDays,
+						"instance_class":    inst.Class,
+						"engine":            inst.Engine,
+						"swap_growth_bytes": metrics.SwapGrowthBytes,
+						"avg_write_iops":    metrics.AvgWriteIOPS,
 					},
 				})
 			}

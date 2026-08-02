@@ -2,6 +2,7 @@ package rds
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -17,10 +18,15 @@ type MetricStats struct {
 	TotalConns     float64
 	HasData        bool
 	DatapointCount int
-	// WO-16: SwapUsed is true if the instance measurably used swap during the
-	// window — a memory-pressure countersignal against flagging OVERSIZED_INSTANCE
-	// on low CPU alone, regardless of instance class.
-	SwapUsed bool
+	// WO-17: SwapGrowthBytes is the change in swap between the earliest and
+	// latest datapoint in the window. Growth indicates memory pressure; a flat
+	// or declining value is parked-page noise (Linux commonly parks a few MB
+	// at boot and never touches it again), which WO-16 wrongly read as pressure.
+	SwapGrowthBytes float64
+	// WO-17: AvgWriteIOPS is average write IOPS over the window. Sustained
+	// write I/O is a countersignal against downsizing even when CPU is low,
+	// because burstable instance classes scale EBS bandwidth with size.
+	AvgWriteIOPS float64
 }
 
 // WO-7: enables tag-based exclusion in rds/scanner.go.
@@ -80,9 +86,8 @@ func FetchInstanceMetrics(ctx context.Context, cw CloudWatchAPI, instanceID stri
 		return nil, err
 	}
 
-	// WO-16: fetch swap usage as a memory-pressure countersignal for the
-	// oversized-instance check; any measurable swap activity means the
-	// instance is memory-bound regardless of how low its CPU looks.
+	// WO-17: fetch swap usage to measure GROWTH across the window as a
+	// memory-pressure countersignal for the oversized-instance check.
 	swapOut, err := cw.GetMetricStatistics(ctx, &cloudwatch.GetMetricStatisticsInput{
 		Namespace:  aws.String("AWS/RDS"),
 		MetricName: aws.String("SwapUsage"),
@@ -93,6 +98,23 @@ func FetchInstanceMetrics(ctx context.Context, cw CloudWatchAPI, instanceID stri
 		EndTime:    aws.Time(now),
 		Period:     aws.Int32(period),
 		Statistics: []cwtypes.Statistic{cwtypes.StatisticMaximum},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// WO-17: fetch write IOPS as an I/O-bound countersignal; a low-CPU instance
+	// sustaining heavy writes is not necessarily safe to downsize.
+	writeOut, err := cw.GetMetricStatistics(ctx, &cloudwatch.GetMetricStatisticsInput{
+		Namespace:  aws.String("AWS/RDS"),
+		MetricName: aws.String("WriteIOPS"),
+		Dimensions: []cwtypes.Dimension{
+			{Name: aws.String("DBInstanceIdentifier"), Value: aws.String(instanceID)},
+		},
+		StartTime:  aws.Time(start),
+		EndTime:    aws.Time(now),
+		Period:     aws.Int32(period),
+		Statistics: []cwtypes.Statistic{cwtypes.StatisticAverage},
 	})
 	if err != nil {
 		return nil, err
@@ -122,14 +144,41 @@ func FetchInstanceMetrics(ctx context.Context, cw CloudWatchAPI, instanceID stri
 		}
 	}
 
-	// WO-16: any measurable swap usage during the window is a memory-pressure
-	// countersignal, independent of instance class.
-	for _, dp := range swapOut.Datapoints {
-		if dp.Maximum != nil && *dp.Maximum > 0 {
-			stats.SwapUsed = true
-			break
+	// WO-17: swap GROWTH, not presence. CloudWatch does not guarantee datapoint
+	// ordering, so sort by timestamp before taking the first/last delta.
+	stats.SwapGrowthBytes = swapGrowth(swapOut.Datapoints)
+
+	// WO-17: average write IOPS across the window.
+	var writeSum float64
+	var writeCount int
+	for _, dp := range writeOut.Datapoints {
+		if dp.Average != nil {
+			writeSum += *dp.Average
+			writeCount++
 		}
+	}
+	if writeCount > 0 {
+		stats.AvgWriteIOPS = writeSum / float64(writeCount)
 	}
 
 	return stats, nil
+}
+
+// WO-17: swapGrowth returns the change in swap between the chronologically
+// earliest and latest datapoint. Positive means swap grew (memory pressure);
+// zero or negative means flat or reclaimed, which is parked-page noise.
+func swapGrowth(datapoints []cwtypes.Datapoint) float64 {
+	ordered := make([]cwtypes.Datapoint, 0, len(datapoints))
+	for _, dp := range datapoints {
+		if dp.Maximum != nil && dp.Timestamp != nil {
+			ordered = append(ordered, dp)
+		}
+	}
+	if len(ordered) < 2 {
+		return 0
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		return ordered[i].Timestamp.Before(*ordered[j].Timestamp)
+	})
+	return *ordered[len(ordered)-1].Maximum - *ordered[0].Maximum
 }

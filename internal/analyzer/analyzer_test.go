@@ -84,3 +84,41 @@ func TestAnalyzePreservesErrors(t *testing.T) {
 		t.Errorf("Errors len = %d, want 1", len(analysis.Errors))
 	}
 }
+
+// WO-17: waste is split by confidence and the split always sums to the total.
+func TestAnalyzeSplitsWasteByConfidence(t *testing.T) {
+	result := &database.ScanResult{
+		Findings: []database.Finding{
+			{ID: "A", EstimatedMonthlyWaste: 100, Confidence: database.ConfidenceConfident},
+			{ID: "B", EstimatedMonthlyWaste: 25, Confidence: database.ConfidenceNeedsReview},
+		},
+	}
+	analysis := Analyze(result, AnalyzerConfig{})
+
+	if analysis.Summary.ConfidentMonthlyWaste != 100 {
+		t.Errorf("ConfidentMonthlyWaste = %.2f, want 100", analysis.Summary.ConfidentMonthlyWaste)
+	}
+	if analysis.Summary.NeedsReviewMonthlyWaste != 25 {
+		t.Errorf("NeedsReviewMonthlyWaste = %.2f, want 25", analysis.Summary.NeedsReviewMonthlyWaste)
+	}
+	sum := analysis.Summary.ConfidentMonthlyWaste + analysis.Summary.NeedsReviewMonthlyWaste
+	if sum != analysis.Summary.TotalMonthlyWaste {
+		t.Errorf("split sums to %.2f, want TotalMonthlyWaste %.2f", sum, analysis.Summary.TotalMonthlyWaste)
+	}
+}
+
+// WO-17: findings predating grading carry no confidence and count as confident,
+// so the summary is unchanged for consumers that never set the field.
+func TestAnalyzeUngradedFindingsCountAsConfident(t *testing.T) {
+	result := &database.ScanResult{
+		Findings: []database.Finding{{ID: "A", EstimatedMonthlyWaste: 42}},
+	}
+	analysis := Analyze(result, AnalyzerConfig{})
+
+	if analysis.Summary.ConfidentMonthlyWaste != 42 {
+		t.Errorf("ConfidentMonthlyWaste = %.2f, want 42", analysis.Summary.ConfidentMonthlyWaste)
+	}
+	if analysis.Summary.NeedsReviewMonthlyWaste != 0 {
+		t.Errorf("NeedsReviewMonthlyWaste = %.2f, want 0", analysis.Summary.NeedsReviewMonthlyWaste)
+	}
+}
