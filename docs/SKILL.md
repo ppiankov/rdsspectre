@@ -56,24 +56,43 @@ Scans AWS RDS instances and manual snapshots for waste and security findings.
   },
   "findings": [
     {
-      "id": "IDLE_INSTANCE",
+      "id": "OVERSIZED_INSTANCE",
       "severity": "high",
       "resource_type": "instance",
       "resource_id": "mydb-prod",
       "region": "us-east-1",
+      "message": "Instance oversized (max CPU 14.6% over 14 days)",
+      "estimated_monthly_waste": 75.83,
+      "confidence": "needs_review",
+      "countersignals": ["138.6 avg write IOPS (I/O-bound)"]
+    },
+    {
+      "id": "IDLE_INSTANCE",
+      "severity": "high",
+      "resource_type": "instance",
+      "resource_id": "mydb-dev",
+      "region": "us-east-1",
       "message": "Instance idle for 14 days (avg CPU 2.1%, 0 connections)",
-      "estimated_monthly_waste": 124.10
+      "estimated_monthly_waste": 26.81
     }
   ],
   "summary": {
-    "total_findings": 1,
+    "total_findings": 2,
     "instances_scanned": 5,
     "resources_scanned": 5,
-    "total_monthly_waste": 124.10
+    "total_monthly_waste": 102.64,
+    "confident_monthly_waste": 26.81,
+    "needs_review_monthly_waste": 75.83
   },
   "errors": []
 }
 ```
+
+**Cost-finding grading:** cost findings (`IDLE_INSTANCE`, `OVERSIZED_INSTANCE`) carry a `confidence` field and optional `countersignals`:
+- `confident` — the primary signal (low CPU) was not contradicted by a countersignal. The estimated waste is likely actionable.
+- `needs_review` — at least one countersignal disagreed (e.g. growing swap, high write IOPS, or pooled connections on a low-IOPS instance). The finding is still reported — never hidden — but the operator should verify before acting.
+
+The summary splits `total_monthly_waste` into `confident_monthly_waste` and `needs_review_monthly_waste` so the budget question is answerable at a glance.
 
 **Exit codes:**
 - 0: scan completed — a clean account and a scan with findings both exit 0; check `findings`/`summary`, not the exit code, for results
@@ -130,7 +149,8 @@ Prints version, commit, and build date. No flags.
 ## Parsing examples
 
 ```bash
-rdsspectre aws --region us-east-1 --format json | jq '.summary'
+rdsspectre aws --region us-east-1 --format json | jq '.summary | {total_monthly_waste, confident_monthly_waste, needs_review_monthly_waste}'
+rdsspectre aws --region us-east-1 --format json | jq '.findings[] | select(.confidence == "confident")'
 rdsspectre aws --region us-east-1 --format json | jq '.findings[] | select(.severity == "critical")'
 rdsspectre gcp --project my-project --format json | jq '.errors'
 ```

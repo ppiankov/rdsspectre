@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-08-02
+
+### Added
+- Evidence-graded cost findings: every `IDLE_INSTANCE` and `OVERSIZED_INSTANCE`
+  finding now carries a `confidence` field (`confident` or `needs_review`) and
+  optional `countersignals` explaining why confidence was downgraded
+- Summary now splits monthly waste into `confident_monthly_waste` and
+  `needs_review_monthly_waste` so the operator sees at a glance how much of the
+  headline number is actionable
+- IOPS-based idle detection: `IDLE_INSTANCE` now flags instances with near-zero
+  total IOPS even when connection pools hold connections open — the previous
+  `TotalConns == 0` rule structurally never fired with pooled connections
+
+### Fixed
+- `OVERSIZED_INSTANCE` grading uses swap GROWTH (not swap presence) as a
+  memory-pressure countersignal; flat swap from Linux's boot-time page parking
+  no longer reads as pressure
+- Write-IOPS countersignal added to `OVERSIZED_INSTANCE`: a low-CPU instance
+  sustaining heavy writes is graded `needs_review` because burstable instance
+  classes scale EBS bandwidth with size
+- `DatabaseConnections` metric changed from Sum to Average so reported
+  connection counts are meaningful (e.g. 7 instead of 134305)
+- SpectreHub README links now point to spectrehub.dev; retired Go Report Card
+  badge removed
+
 ## [0.1.2] - 2026-08-01
 
 ### Fixed
