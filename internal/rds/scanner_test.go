@@ -266,6 +266,47 @@ func TestScanOversizedInstance(t *testing.T) {
 	}
 }
 
+// WO-16: low CPU alone still flags oversized when no swap activity was measured.
+func TestScanOversizedInstanceNoSwap(t *testing.T) {
+	mock := newMockRDSClient()
+	mock.instances = []rdstypes.DBInstance{
+		makeInstance("big-db", "db.r5.xlarge", "postgres", "17.2"),
+	}
+	cw := newMockCWClient()
+	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)
+	cw.metrics["DatabaseConnections"] = makeConnDatapoints(50)
+	cw.metrics["SwapUsage"] = makeSwapDatapoints(0)
+
+	s := newTestScanner(mock, cw)
+	result := s.Scan(context.Background(), defaultCfg(), nil)
+
+	findings := findByID(result.Findings, database.FindingOversizedInstance)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 OVERSIZED_INSTANCE with zero swap, got %d", len(findings))
+	}
+}
+
+// WO-16: measurable swap usage suppresses OVERSIZED_INSTANCE even with low CPU,
+// since it signals memory pressure the CPU metric alone can't see.
+func TestScanOversizedInstanceSuppressedBySwap(t *testing.T) {
+	mock := newMockRDSClient()
+	mock.instances = []rdstypes.DBInstance{
+		makeInstance("swapping-db", "db.r5.xlarge", "postgres", "17.2"),
+	}
+	cw := newMockCWClient()
+	cw.metrics["CPUUtilization"] = makeCPUDatapoints(8.0, 15.0, 14)
+	cw.metrics["DatabaseConnections"] = makeConnDatapoints(50)
+	cw.metrics["SwapUsage"] = makeSwapDatapoints(1048576) // 1 MiB of swap observed
+
+	s := newTestScanner(mock, cw)
+	result := s.Scan(context.Background(), defaultCfg(), nil)
+
+	findings := findByID(result.Findings, database.FindingOversizedInstance)
+	if len(findings) != 0 {
+		t.Fatalf("expected 0 OVERSIZED_INSTANCE when swap was used, got %d", len(findings))
+	}
+}
+
 func TestScanActiveInstanceNotFlagged(t *testing.T) {
 	mock := newMockRDSClient()
 	mock.instances = []rdstypes.DBInstance{

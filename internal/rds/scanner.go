@@ -213,8 +213,11 @@ func (s *RDSScanner) analyzeInstance(ctx context.Context, cfg database.ScanConfi
 						"engine":         inst.Engine,
 					},
 				})
-			} else if metrics.MaxCPU < cfg.CPUThreshold && metrics.TotalConns > 0 {
-				// Oversized check: max CPU < threshold but has connections (active, just oversized)
+				// WO-16: oversized check requires max CPU < threshold AND no
+				// measurable swap activity — swap usage means the instance is
+				// memory-bound despite low CPU, so downsizing on CPU alone
+				// would be unsafe regardless of instance class.
+			} else if metrics.MaxCPU < cfg.CPUThreshold && metrics.TotalConns > 0 && !metrics.SwapUsed {
 				findings = append(findings, database.Finding{
 					ID:                    database.FindingOversizedInstance,
 					Severity:              database.SeverityHigh,

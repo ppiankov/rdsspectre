@@ -17,6 +17,10 @@ type MetricStats struct {
 	TotalConns     float64
 	HasData        bool
 	DatapointCount int
+	// WO-16: SwapUsed is true if the instance measurably used swap during the
+	// window — a memory-pressure countersignal against flagging OVERSIZED_INSTANCE
+	// on low CPU alone, regardless of instance class.
+	SwapUsed bool
 }
 
 // WO-7: enables tag-based exclusion in rds/scanner.go.
@@ -76,6 +80,24 @@ func FetchInstanceMetrics(ctx context.Context, cw CloudWatchAPI, instanceID stri
 		return nil, err
 	}
 
+	// WO-16: fetch swap usage as a memory-pressure countersignal for the
+	// oversized-instance check; any measurable swap activity means the
+	// instance is memory-bound regardless of how low its CPU looks.
+	swapOut, err := cw.GetMetricStatistics(ctx, &cloudwatch.GetMetricStatisticsInput{
+		Namespace:  aws.String("AWS/RDS"),
+		MetricName: aws.String("SwapUsage"),
+		Dimensions: []cwtypes.Dimension{
+			{Name: aws.String("DBInstanceIdentifier"), Value: aws.String(instanceID)},
+		},
+		StartTime:  aws.Time(start),
+		EndTime:    aws.Time(now),
+		Period:     aws.Int32(period),
+		Statistics: []cwtypes.Statistic{cwtypes.StatisticMaximum},
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	stats := &MetricStats{}
 
 	if len(cpuOut.Datapoints) > 0 {
@@ -97,6 +119,15 @@ func FetchInstanceMetrics(ctx context.Context, cw CloudWatchAPI, instanceID stri
 	for _, dp := range connOut.Datapoints {
 		if dp.Sum != nil {
 			stats.TotalConns += *dp.Sum
+		}
+	}
+
+	// WO-16: any measurable swap usage during the window is a memory-pressure
+	// countersignal, independent of instance class.
+	for _, dp := range swapOut.Datapoints {
+		if dp.Maximum != nil && *dp.Maximum > 0 {
+			stats.SwapUsed = true
+			break
 		}
 	}
 
