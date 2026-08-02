@@ -2,9 +2,8 @@
 
 [![CI](https://github.com/ppiankov/rdsspectre/actions/workflows/ci.yml/badge.svg)](https://github.com/ppiankov/rdsspectre/actions/workflows/ci.yml)
 [![ANCC](https://img.shields.io/badge/ANCC-compliant-brightgreen)](https://ancc.dev)
-[![Go Report Card](https://goreportcard.com/badge/github.com/ppiankov/rdsspectre)](https://goreportcard.com/report/github.com/ppiankov/rdsspectre)
 
-**rdsspectre** — Managed database waste and security auditor for RDS and Cloud SQL. Part of [SpectreHub](https://github.com/ppiankov/spectrehub).
+**rdsspectre** — Managed database waste and security auditor for RDS and Cloud SQL. Part of [SpectreHub](https://spectrehub.dev).
 
 ## What it is
 
@@ -64,7 +63,7 @@ rdsspectre aws --region us-east-1 --format json
 
 ## SpectreHub integration
 
-rdsspectre feeds managed database waste findings into [SpectreHub](https://github.com/ppiankov/spectrehub) for unified visibility across your infrastructure.
+rdsspectre feeds managed database waste findings into [SpectreHub](https://spectrehub.dev) for unified visibility across your infrastructure.
 
 ```sh
 spectrehub collect --tool rdsspectre
