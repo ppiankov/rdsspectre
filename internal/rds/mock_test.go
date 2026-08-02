@@ -157,10 +157,11 @@ func makeCPUDatapoints(avgCPU, maxCPU float64, count int) *cloudwatch.GetMetricS
 	return &cloudwatch.GetMetricStatisticsOutput{Datapoints: dps}
 }
 
-func makeConnDatapoints(totalConns float64) *cloudwatch.GetMetricStatisticsOutput {
+// WO-19: DatabaseConnections now uses Average, not Sum.
+func makeConnDatapoints(avgConns float64) *cloudwatch.GetMetricStatisticsOutput {
 	return &cloudwatch.GetMetricStatisticsOutput{
 		Datapoints: []cwtypes.Datapoint{
-			{Sum: &totalConns},
+			{Average: &avgConns},
 		},
 	}
 }

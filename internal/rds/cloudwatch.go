@@ -27,6 +27,10 @@ type MetricStats struct {
 	// write I/O is a countersignal against downsizing even when CPU is low,
 	// because burstable instance classes scale EBS bandwidth with size.
 	AvgWriteIOPS float64
+	// WO-18: AvgReadIOPS is average read IOPS over the window. Combined with
+	// AvgWriteIOPS, total IOPS is the activity signal that distinguishes a
+	// genuinely idle instance (pooled connections but no I/O) from an active one.
+	AvgReadIOPS float64
 }
 
 // WO-7: enables tag-based exclusion in rds/scanner.go.
@@ -70,7 +74,8 @@ func FetchInstanceMetrics(ctx context.Context, cw CloudWatchAPI, instanceID stri
 		return nil, err
 	}
 
-	// Fetch connection count
+	// WO-19: use Average for DatabaseConnections so TotalConns is the average
+	// connection count over the window, not a meaningless sum-of-daily-sums.
 	connOut, err := cw.GetMetricStatistics(ctx, &cloudwatch.GetMetricStatisticsInput{
 		Namespace:  aws.String("AWS/RDS"),
 		MetricName: aws.String("DatabaseConnections"),
@@ -80,7 +85,7 @@ func FetchInstanceMetrics(ctx context.Context, cw CloudWatchAPI, instanceID stri
 		StartTime:  aws.Time(start),
 		EndTime:    aws.Time(now),
 		Period:     aws.Int32(period),
-		Statistics: []cwtypes.Statistic{cwtypes.StatisticSum},
+		Statistics: []cwtypes.Statistic{cwtypes.StatisticAverage},
 	})
 	if err != nil {
 		return nil, err
@@ -120,6 +125,23 @@ func FetchInstanceMetrics(ctx context.Context, cw CloudWatchAPI, instanceID stri
 		return nil, err
 	}
 
+	// WO-18: fetch read IOPS; combined with write IOPS, total IOPS is the
+	// activity signal for pooled-connection idle detection.
+	readOut, err := cw.GetMetricStatistics(ctx, &cloudwatch.GetMetricStatisticsInput{
+		Namespace:  aws.String("AWS/RDS"),
+		MetricName: aws.String("ReadIOPS"),
+		Dimensions: []cwtypes.Dimension{
+			{Name: aws.String("DBInstanceIdentifier"), Value: aws.String(instanceID)},
+		},
+		StartTime:  aws.Time(start),
+		EndTime:    aws.Time(now),
+		Period:     aws.Int32(period),
+		Statistics: []cwtypes.Statistic{cwtypes.StatisticAverage},
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	stats := &MetricStats{}
 
 	if len(cpuOut.Datapoints) > 0 {
@@ -138,10 +160,17 @@ func FetchInstanceMetrics(ctx context.Context, cw CloudWatchAPI, instanceID stri
 		stats.MaxCPU = maxVal
 	}
 
+	// WO-19: average the Average datapoints, not sum the Sum datapoints.
+	var connSum float64
+	var connCount int
 	for _, dp := range connOut.Datapoints {
-		if dp.Sum != nil {
-			stats.TotalConns += *dp.Sum
+		if dp.Average != nil {
+			connSum += *dp.Average
+			connCount++
 		}
+	}
+	if connCount > 0 {
+		stats.TotalConns = connSum / float64(connCount)
 	}
 
 	// WO-17@v2: swap GROWTH, not presence. CloudWatch does not guarantee datapoint
@@ -159,6 +188,19 @@ func FetchInstanceMetrics(ctx context.Context, cw CloudWatchAPI, instanceID stri
 	}
 	if writeCount > 0 {
 		stats.AvgWriteIOPS = writeSum / float64(writeCount)
+	}
+
+	// WO-18: average read IOPS across the window.
+	var readSum float64
+	var readCount int
+	for _, dp := range readOut.Datapoints {
+		if dp.Average != nil {
+			readSum += *dp.Average
+			readCount++
+		}
+	}
+	if readCount > 0 {
+		stats.AvgReadIOPS = readSum / float64(readCount)
 	}
 
 	return stats, nil
